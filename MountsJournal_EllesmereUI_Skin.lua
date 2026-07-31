@@ -1733,10 +1733,15 @@ local function journal_init(journal)
 			-- padded itself differently; chaining edge-to-edge with a 1px seam
 			-- is what the ElvUI reference does and it is the only way the row
 			-- lines up at every window width.
+			-- The 3px inset either end was the stock spacing, sized for art with
+			-- its own transparent margin. Flattened to solid blocks it reads as
+			-- the row failing to reach the panel it sits in, so bring both ends
+			-- out to a 1px hairline off the container edge.
+			local EDGE = 1
 			local control = mapSettings.mapControl
 			if control and mapSettings.CurrentMap and mapSettings.existingListsToggle then
 				mapSettings.existingListsToggle:ClearAllPoints()
-				mapSettings.existingListsToggle:SetPoint("TOPRIGHT", control, "TOPRIGHT", -3, -3)
+				mapSettings.existingListsToggle:SetPoint("TOPRIGHT", control, "TOPRIGHT", -EDGE, -3)
 
 				mapSettings.CurrentMap:ClearAllPoints()
 				mapSettings.CurrentMap:SetPoint("LEFT", control, "LEFT", 134, -1)
@@ -1745,7 +1750,7 @@ local function journal_init(journal)
 
 				if mapSettings.dnr then
 					mapSettings.dnr:ClearAllPoints()
-					mapSettings.dnr:SetPoint("TOPLEFT", control, "TOPLEFT", 3, -3)
+					mapSettings.dnr:SetPoint("TOPLEFT", control, "TOPLEFT", EDGE, -3)
 					mapSettings.dnr:SetPoint("RIGHT", mapSettings.CurrentMap, "LEFT", -1, 0)
 				end
 			end
@@ -1943,15 +1948,22 @@ local function journal_init(journal)
 				if tab and not tab.euiFlat then
 					tab.euiFlat = true
 
-					-- Hover art is left alone so the row still answers the
-					-- mouse; only the tab plate is cleared.
+					-- Alpha, not SetTexture(""). Clearing an atlas region's
+					-- texture does not make it draw nothing: it falls back to a
+					-- plain white one, and these six regions sit at alpha 1.00
+					-- and 0.40, so the row stacked up into pale silver blocks.
+					-- The window engine gets away with the same call only
+					-- because it then covers the tab with an opaque plate; we
+					-- lay a 10% wash, so anything left underneath shows through.
+					--
+					-- Fading is what the rest of the addon does anyway. Hover
+					-- art is left alone so the row still answers the mouse.
 					local highlight = tab.GetHighlightTexture and tab:GetHighlightTexture()
 					for j = 1, select("#", tab:GetRegions()) do
 						local r = select(j, tab:GetRegions())
 						if r and r ~= highlight and r.IsObjectType
 							and r:IsObjectType("Texture") then
-							r:SetTexture("")
-							if r.SetAtlas then r:SetAtlas("") end
+							r:SetAlpha(0)
 						end
 					end
 
