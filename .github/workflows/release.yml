@@ -1,0 +1,36 @@
+name: Release
+
+# Cut a release by pushing a version tag:
+#   git tag -a v1.0.0 -m "1.0.0" && git push origin v1.0.0
+#
+# The packager builds a zip whose ROOT folder matches the addon folder name
+# (see .pkgmeta), substitutes @project-version@ in the TOC with the tag, and
+# attaches the zip to the GitHub release. Addon managers read that release
+# asset -- a tag or commit on its own is not enough.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Package and release
+        uses: BigWigsMods/packager@master
+        env:
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          # Uploads happen automatically once these secrets exist; the packager
+          # reads the project IDs from the X-*-ID lines in the TOC.
+          # CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          # WAGO_API_KEY: ${{ secrets.WAGO_API_KEY }}
+          # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}

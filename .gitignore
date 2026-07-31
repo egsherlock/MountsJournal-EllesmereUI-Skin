@@ -1,0 +1,30 @@
+# OS / editor cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Claude Code / AI tooling -- local working state, not part of the addon
+.claude/
+CLAUDE.md
+.claude-*/
+*.claude.md
+
+# Maintainer notes. Kept locally -- they are working notes about how the skin
+# was arrived at, not documentation an end user or a packager needs.
+SKINNING_NOTES.md
+
+# Local scratch: diagnostic dumps, screenshots, and reference copies of other
+# addons pulled down while working. Useful locally, noise in the repo.
+scratch/
+scratchpad/
+reference/
+notes.local.md
+*.local.lua
+*.local.md
+
+# Build output. CI builds the release zip; a local build is disposable.
+.release/
+*.zip

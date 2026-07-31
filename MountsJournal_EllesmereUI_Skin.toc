@@ -1,0 +1,31 @@
+## Interface: 120100, 120007
+## Title: MountsJournal EllesmereUI Skin
+## Notes: Reskins MountsJournal to match EllesmereUI.
+## Version: @project-version@
+## IconTexture: 413588
+## Category-enUS: Collections
+## Category-deDE: Kriegsmeutesammlungen
+## Category-esES: Colecciones de banda guerrera
+## Category-esMX: Colecciones de tropa
+## Category-frFR: Collections du bataillon
+## Category-itIT: Collezioni della Brigata
+## Category-koKR: 전투부대 수집품
+## Category-ptBR: Coleções do Bando de Guerra
+## Category-ruRU: Коллекции отряда
+## Category-zhCN: 战团藏品
+## Category-zhTW: 戰隊收藏
+## Dependencies: MountsJournal, EllesmereUI
+## OptionalDeps: EllesmereUIBlizzardSkin
+## SavedVariables: MountsJournalEllesmereUISkinDB
+
+## X-Website: https://github.com/egsherlock/MountsJournal-EllesmereUI-Skin
+## X-License: GPL-3.0
+## X-Category: Collections
+
+# Uncomment and fill in once the projects exist. The packager reads these to
+# know where to upload, and the matching API key has to be added as a repo
+# secret (CF_API_KEY / WAGO_API_KEY) and uncommented in the release workflow.
+# ## X-Curse-Project-ID: 000000
+# ## X-Wago-ID: 000000
+Backend.lua
+MountsJournal_EllesmereUI_Skin.lua
