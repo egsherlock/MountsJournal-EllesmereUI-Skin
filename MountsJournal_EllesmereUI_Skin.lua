@@ -1382,11 +1382,24 @@ local function journal_init(journal)
 				arrowBtn.euiSkinned = true
 
 				S.FadeRegions(arrowBtn)
-				for _, getter in ipairs({"GetNormalTexture", "GetPushedTexture",
-					"GetDisabledTexture", "GetHighlightTexture"}) do
-					local fn = arrowBtn[getter]
-					local tex = fn and fn(arrowBtn)
-					if tex then tex:SetAlpha(0) end
+
+				-- Fading once is not enough here. The template ships its
+				-- Normal and Pushed art at alpha 0 and RAISES it from the
+				-- button's own mouse scripts, so a build-time fade is undone
+				-- the moment the cursor arrives: that is the square button
+				-- plate appearing around the arrow on hover. Re-zero from the
+				-- same scripts, which run after the template's own.
+				local function hideArt()
+					for _, getter in ipairs({"GetNormalTexture", "GetPushedTexture",
+						"GetDisabledTexture", "GetHighlightTexture"}) do
+						local fn = arrowBtn[getter]
+						local tex = fn and fn(arrowBtn)
+						if tex then tex:SetAlpha(0) end
+					end
+				end
+				hideArt()
+				for _, script in ipairs({"OnEnter", "OnLeave", "OnMouseDown", "OnMouseUp"}) do
+					arrowBtn:HookScript(script, hideArt)
 				end
 
 				local arrow = arrowBtn:CreateTexture(nil, "OVERLAY")
@@ -1917,108 +1930,19 @@ local function journal_init(journal)
 			repaintTabs()
 		end
 
-		-- Seat the bottom row flush. The template anchors the row 2px up into
-		-- the window (y="2" on settingsTab), which with the native art was the
-		-- overlap that made a tab look joined to the frame; against our flat
-		-- edge it just reads as the tabs sitting on top of the window. Only
-		-- settingsTab needs it, the other two chain off it horizontally and
-		-- inherit its y.
-		if bgFrame.settingsTab then
-			bgFrame.settingsTab:ClearAllPoints()
-			bgFrame.settingsTab:SetPoint("TOPRIGHT", bgFrame, "BOTTOMRIGHT", -6, 0)
-		end
-
-		--[[ Flatten the row to match Collections' ------------------------------
-			Measured, not assumed. /mjeuiskin tabs shows our three tabs carrying
-			their native atlas, uiframe-tab-left, _uiframe-tab-center,
-			uiframe-tab-right, while Collections' tabs report those same six
-			regions with no atlas at all, plus a 15% white wash over the result.
-			Same template, different treatment.
-
-			The reason is ownership, not style. EllesmereUI's Collections pack
-			sweeps that window's art, and WSkin.IsForeignFrame makes it skip any
-			addon-created frame, so it flattens Blizzard's tabs and steps over
-			MountsJournal's, which hang off its own window. That is why ours
-			read heavier and more opaque than the row beside them.
-
-			So do to ours what the sweep did to theirs: clear the same art, lay
-			the same wash. Note this is the opposite of leaving them alone,
-			which was right while the evidence said both rows were untouched,
-			and wrong once the atlas names showed one row stripped and one not.
-
-			Labels are deliberately not touched: Blizzard already keeps them
-			gold when unselected and white when selected, on both rows.
-		------------------------------------------------------------------------]]
-		local row = bgFrame.Tabs
-		if type(row) == "table" then
-			for i = 1, #row do
-				local tab = row[i]
-				if tab and not tab.euiFlat then
-					tab.euiFlat = true
-
-					-- Alpha, not SetTexture(""). Clearing an atlas region's
-					-- texture does not make it draw nothing: it falls back to a
-					-- plain white one, and these six regions sit at alpha 1.00
-					-- and 0.40, so the row stacked up into pale silver blocks.
-					-- The window engine gets away with the same call only
-					-- because it then covers the tab with an opaque plate; we
-					-- lay a 10% wash, so anything left underneath shows through.
-					--
-					-- Fading is what the rest of the addon does anyway. Hover
-					-- art is left alone so the row still answers the mouse.
-					local highlight = tab.GetHighlightTexture and tab:GetHighlightTexture()
-					for j = 1, select("#", tab:GetRegions()) do
-						local r = select(j, tab:GetRegions())
-						if r and r ~= highlight and r.IsObjectType
-							and r:IsObjectType("Texture") then
-							r:SetAlpha(0)
-						end
-					end
-
-					-- A base as well as a wash. Collections' tabs carry three
-					-- slices at full alpha and three more at 0.40 UNDER their
-					-- 15% white wash, so the wash lands on something solid.
-					-- Fading our art and laying only a wash left it floating
-					-- over whatever is behind the window, which for a row
-					-- hanging below the frame is the game world: a pale haze
-					-- rather than a tab. The house panel tone gives it the
-					-- solid base the other row gets from its own art.
-					local base = tab:CreateTexture(nil, "BACKGROUND", nil, -8)
-					base:SetAllPoints()
-					local br, bg, bb, ba = S.GetPanelColor()
-					base:SetColorTexture(br, bg, bb, ba)
-					tab.euiBase = base
-
-					local wash = tab:CreateTexture(nil, "BACKGROUND", nil, -7)
-					wash:SetPoint("TOPLEFT", 3, -3)
-					wash:SetPoint("BOTTOMRIGHT", -3, 3)
-					tab.euiWash = wash
-				end
-			end
-
-			-- The current tab reads a little more solid, as Collections' does.
-			local function paintRow()
-				for i = 1, #row do
-					local tab = row[i]
-					if tab and tab.euiWash then
-						local sel = bgFrame.selectedTab == i
-						tab.euiWash:SetColorTexture(1, 1, 1, sel and .16 or .05)
-					end
-				end
-			end
-			for i = 1, #row do
-				if row[i] then row[i]:HookScript("OnClick", paintRow) end
-			end
-			paintRow()
-		end
-
-		-- Positions are not touched either. Closing the row to a 1px seam broke
-		-- it twice: first by chaining in array order, which runs opposite to the
-		-- row on screen and rebuilt it backwards off the window's edge; then,
-		-- after sorting by position, by doing that sort during journal_init,
-		-- before layout, when GetLeft() is unresolved and every tab reports the
-		-- same value. An unstable sort there re-anchored Map and Model past the
-		-- window edge and they vanished outright.
+		-- The Model/Map/Settings row is deliberately NOT touched: not its art,
+		-- not its position, not its labels.
+		-- 
+		-- Two attempts to improve it both made it worse than doing nothing. It
+		-- was flattened to match Collections' row, on the evidence that their
+		-- atlas regions were cleared and ours were not; that lost the native
+		-- selected-tab growth, since the growth IS the taller activetab atlas, and
+		-- left a flat plate that reads nothing like the row beside it. Seating it
+		-- flush removed a 2px overlap that the native art is drawn to have.
+		-- 
+		-- Untouched, these are the same Blizzard template as Collections' tabs
+		-- and they behave identically, growth included. That is the bar to beat,
+		-- and nothing tried so far has beaten it.
 	end)
 
 end
