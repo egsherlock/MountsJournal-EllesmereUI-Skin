@@ -391,6 +391,22 @@ SlashCmdList.MJEUISKIN = function(msg)
 		return
 	end
 
+	-- Versions, so a bug report carries the one variable every path-based
+	-- stage depends on. Resolved only when the command runs; this costs the
+	-- addon nothing. Deliberately above the inert bail-out, an inert report
+	-- needs them most.
+	do
+		local getMeta = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
+		if getMeta then
+			local function ver(name)
+				local ok, v = pcall(getMeta, name, "Version")
+				return (ok and v) or "?"
+			end
+			print(("  versions: skin %s, MountsJournal %s, EllesmereUI %s"):format(
+				ver(ADDON_NAME), ver("MountsJournal"), ver("EllesmereUI")))
+		end
+	end
+
 	if not (haveEUI and haveMJ) then
 		print("  |cffff5555Addon is inert. A precondition was missing at load.|r")
 		print("  EllesmereUI loaded:", yn(haveEUI))
