@@ -813,6 +813,10 @@ local DD_STYLE = "EllesmereUI"
 
 
 local function setupMenuStyle()
+	-- Idempotent: once the library is resolved and the style registered,
+	-- calling again is a no-op. That matters because this runs twice, see the
+	-- second call site in skinUI for why.
+	if lsfdd then return end
 	-- Resolved by prefix rather than a pinned version so a library bump in
 	-- MountsJournal does not silently drop the menu skin.
 	if LibStub and LibStub.IterateLibraries then
@@ -2633,6 +2637,15 @@ end
 
 
 local function skinUI()
+	-- LibSFDropDown ships inside MountsJournal's UI addon, which loads on
+	-- demand AFTER our PLAYER_LOGIN dispatch, so the login-time resolution in
+	-- stage("menuStyle") can run before the library exists and come up empty:
+	-- that was the permanent "dropdown menu style: NO" with every stage ok.
+	-- skinUI only runs once MountsJournalFrame does, which is after that
+	-- addon has loaded, so this retry is the one that sticks. Guarded, so on
+	-- setups where the first pass already resolved it this is a no-op.
+	stage("menuStyleLate", setupMenuStyle)
+
 	stage("tooltip", function()
 		if MJTooltipModel then S.Panel(MJTooltipModel) end
 	end)
