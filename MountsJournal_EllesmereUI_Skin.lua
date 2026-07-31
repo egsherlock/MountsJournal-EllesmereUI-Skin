@@ -331,8 +331,16 @@ local function dumpTab(label, tab)
 		if r and r.IsObjectType and r:IsObjectType("Texture")
 			and r:IsShown() and (r:GetAlpha() or 0) > .01 then
 			local _, _, w, h = rectOf(r)
-			tex[#tex + 1] = ("%s %sx%s a=%.2f")
-				:format(texDesc(r), tostring(w), tostring(h), r:GetAlpha())
+			-- Vertex colour as well as size and alpha. Without it a texture
+			-- with no file reads as "colour" and says nothing about whether
+			-- it is a dark plate or a white one, which is the difference
+			-- between a tab and a haze.
+			local okC, cr, cg, cb, ca = pcall(r.GetVertexColor, r)
+			local col = okC and cr
+				and ("%.2f/%.2f/%.2f a=%.2f"):format(cr, cg, cb, ca or 1)
+				or "?"
+			tex[#tex + 1] = ("%s %sx%s regionA=%.2f rgba %s")
+				:format(texDesc(r), tostring(w), tostring(h), r:GetAlpha(), col)
 		end
 	end
 	if #tex > 0 then print("      art: " .. table.concat(tex, " | ")) end
@@ -1967,7 +1975,21 @@ local function journal_init(journal)
 						end
 					end
 
-					local wash = tab:CreateTexture(nil, "BACKGROUND")
+					-- A base as well as a wash. Collections' tabs carry three
+					-- slices at full alpha and three more at 0.40 UNDER their
+					-- 15% white wash, so the wash lands on something solid.
+					-- Fading our art and laying only a wash left it floating
+					-- over whatever is behind the window, which for a row
+					-- hanging below the frame is the game world: a pale haze
+					-- rather than a tab. The house panel tone gives it the
+					-- solid base the other row gets from its own art.
+					local base = tab:CreateTexture(nil, "BACKGROUND", nil, -8)
+					base:SetAllPoints()
+					local br, bg, bb, ba = S.GetPanelColor()
+					base:SetColorTexture(br, bg, bb, ba)
+					tab.euiBase = base
+
+					local wash = tab:CreateTexture(nil, "BACKGROUND", nil, -7)
 					wash:SetPoint("TOPLEFT", 3, -3)
 					wash:SetPoint("BOTTOMRIGHT", -3, 3)
 					tab.euiWash = wash
@@ -1980,7 +2002,7 @@ local function journal_init(journal)
 					local tab = row[i]
 					if tab and tab.euiWash then
 						local sel = bgFrame.selectedTab == i
-						tab.euiWash:SetColorTexture(1, 1, 1, sel and .22 or .10)
+						tab.euiWash:SetColorTexture(1, 1, 1, sel and .16 or .05)
 					end
 				end
 			end
