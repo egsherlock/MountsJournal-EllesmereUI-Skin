@@ -29,8 +29,8 @@ jobs:
         uses: BigWigsMods/packager@master
         env:
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
-          # Uploads happen automatically once these secrets exist; the packager
-          # reads the project IDs from the X-*-ID lines in the TOC.
-          # CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          # The packager reads the project IDs from the X-*-ID lines in the
+          # TOC. Wago/WoWI stay commented until those projects exist.
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
           # WAGO_API_KEY: ${{ secrets.WAGO_API_KEY }}
           # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}

@@ -22,10 +22,10 @@
 ## X-License: GPL-3.0
 ## X-Category: Collections
 
-# Uncomment and fill in once the projects exist. The packager reads these to
-# know where to upload, and the matching API key has to be added as a repo
-# secret (CF_API_KEY / WAGO_API_KEY) and uncommented in the release workflow.
-# ## X-Curse-Project-ID: 000000
+# The packager reads these to know where to upload; the matching API key
+# lives as a repo secret (CF_API_KEY / WAGO_API_KEY) and is enabled in the
+# release workflow. Wago stays commented until that project exists.
+## X-Curse-Project-ID: 1633540
 # ## X-Wago-ID: 000000
 Backend.lua
 MountsJournal_EllesmereUI_Skin.lua
