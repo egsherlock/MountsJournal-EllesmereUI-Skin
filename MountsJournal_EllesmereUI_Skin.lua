@@ -1359,6 +1359,36 @@ local function journal_init(journal)
 				crumb reaches it the arrow stays visible and clickable.
 			----------------------------------------------------------------]]
 			local NAV_SEAM = 1
+			-- MJNavButtonTemplate is 28 tall. The home and overflow buttons come
+			-- from Blizzard's NavBarTemplate at 24, a difference the chevron art
+			-- hid and flat blocks do not, so the row had two odd ones out.
+			local NAV_HEIGHT = 28
+
+			-- The dropdown arrow is a child button carrying its own
+			-- SquareButtonTextures art, so flattening the crumb never reached
+			-- it. Give it the same arrow S.Dropdown draws, which is what the
+			-- map's own navigation button gets.
+			local function skinMenuArrow(btn)
+				local arrowBtn = btn and btn.MenuArrowButton
+				if not arrowBtn or arrowBtn.euiSkinned then return end
+				arrowBtn.euiSkinned = true
+
+				S.FadeRegions(arrowBtn)
+				for _, getter in ipairs({"GetNormalTexture", "GetPushedTexture",
+					"GetDisabledTexture", "GetHighlightTexture"}) do
+					local fn = arrowBtn[getter]
+					local tex = fn and fn(arrowBtn)
+					if tex then tex:SetAlpha(0) end
+				end
+
+				local arrow = arrowBtn:CreateTexture(nil, "OVERLAY")
+				arrow:SetAtlas("Azerite-PointingArrow")
+				arrow:SetSize(12, 9)
+				arrow:SetPoint("CENTER", 0, -1)
+				arrow:SetVertexColor(1, 1, 1, .8)
+				arrowBtn:HookScript("OnEnter", function() arrow:SetVertexColor(1, 1, 1, 1) end)
+				arrowBtn:HookScript("OnLeave", function() arrow:SetVertexColor(1, 1, 1, .8) end)
+			end
 
 			local function skinNavButton(btn)
 				if not btn or btn.euiSkinned then return end
@@ -1366,9 +1396,22 @@ local function journal_init(journal)
 				btn.xoffset = NAV_SEAM
 				S.FadeRegions(btn)
 				flatButton(btn)
+				skinMenuArrow(btn)
 			end
 
-			if navBar.homeButton then navBar.homeButton.xoffset = NAV_SEAM end
+			-- xoffset is a real NavBar field, and both of these ship with a
+			-- large negative one (-15 on home, -18 on overflow) so the next
+			-- button slides back under their chevron overhang. That is the
+			-- overlap burying the overflow arrow on a deep trail; a 1px seam
+			-- fixes it at the anchor rather than by stacking frame levels.
+			if navBar.homeButton then
+				navBar.homeButton.xoffset = NAV_SEAM
+				navBar.homeButton:SetHeight(NAV_HEIGHT)
+			end
+			if navBar.overflowButton then
+				navBar.overflowButton.xoffset = NAV_SEAM
+				navBar.overflowButton:SetHeight(NAV_HEIGHT)
+			end
 
 			-- Hooked on the global rather than on refresh, so each button is
 			-- seated before the one after it is placed. Guarded to our own bar:
