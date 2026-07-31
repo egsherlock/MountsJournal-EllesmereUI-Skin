@@ -95,10 +95,16 @@ fastest way to tell a bug here apart from a Blizzard or EllesmereUI change.
 
 ## Compatibility
 
-Works on EllesmereUI 8.6.6 and newer. If `EllesmereUI.RegisterSkin` is available
-it uses that official API. If it isn't, the same set of primitives is rebuilt
-from the public helpers 8.6.6 does export. You don't need to do anything either
-way, and `/mjeuiskin` will tell you which one is running.
+Works on EllesmereUI 8.6.6 and newer. On 8.6.8+ with the Blizzard Skin child
+addon running, it registers through the official skinning API: the skin shows
+up under EllesmereUI's Blizzard Window Skins > Third-Party Addons and follows
+its toggles there, and a live accent or profile change repaints the journal
+without a reload. The window shell, scroll bars and checkboxes are always
+drawn by this addon itself, so the look is identical on every version and the
+backdrop and opacity options keep working. On 8.6.6, or without the child
+addon, the same set of primitives is rebuilt from the public helpers
+EllesmereUI does export. You don't need to do anything either way, and
+`/mjeuiskin` will tell you which backend is running.
 
 ## Licence
 

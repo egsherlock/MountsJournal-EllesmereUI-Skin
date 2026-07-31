@@ -11,11 +11,14 @@
 	Everything routes through a skinning facade (the `S` table), so frames track
 	the user's live theme, window style, accent colour, UI font, panel fill,
 	without this file ever knowing what that theme is. Backend.lua supplies that
-	facade from EllesmereUI's own skinning API where it exists, and rebuilds it
-	from EllesmereUI 8.6.6's public helpers where it does not; this file reads
-	the same either way. Two primitives do not exist in API v1, sliders and
-	portrait removal; both are hand-rolled against the documented getters and
-	marked TODO(api-v2).
+	facade from EllesmereUI's own skinning API where its dispatcher is live
+	(8.6.8+ with the Blizzard Skin child addon), and rebuilds it from 8.6.6's
+	public helpers where it is not; this file reads the same either way. On the
+	api backend three primitives stay local, Shell, ScrollBar and Checkbox,
+	because the engine's versions do not reproduce this skin's look; see
+	Backend.lua's HYBRID FACADE. Two primitives do not exist in API v1, sliders
+	and portrait removal; both are hand-rolled against the documented getters
+	and marked TODO(api-v2).
 
 	Cost model: one-time texture setup plus hooks. No OnUpdate, no polling, no
 	per-frame work.
@@ -395,9 +398,17 @@ SlashCmdList.MJEUISKIN = function(msg)
 		return
 	end
 
-	print("  backend:", ns.GetBackend(),
-		ns.HasAPI() and "(EllesmereUI's own skinning API)"
-			or "(rebuilt from 8.6.6 helpers; update EllesmereUI for the native one)")
+	local backendNote
+	if ns.GetBackend() == "api" then
+		backendNote = "(EllesmereUI's skinning API; shell, scroll bars and checkboxes drawn locally)"
+	elseif ns.HasAPI() then
+		-- The stub exists but nothing will ever fire it: the parent ships
+		-- RegisterSkin as a documented no-op when the child addon is off.
+		backendNote = "(API stub present but EllesmereUIBlizzardSkin is not running; using 8.6.6 helpers)"
+	else
+		backendNote = "(rebuilt from 8.6.6 helpers; update EllesmereUI for the native one)"
+	end
+	print("  backend:", ns.GetBackend(), backendNote)
 
 	if not S then
 		print("  |cffff5555The skin callback never ran.|r")
@@ -1098,9 +1109,11 @@ local function shellPortraitFrame(frame)
 	-- long as this window is up, and hand it straight back when it closes.
 	frame:HookScript("OnShow", function()
 		suppressBehind()
-		-- The compat backend has no live looks callback to hook, so this is
-		-- where a profile or accent change made while the journal was closed
-		-- gets picked up. No-op on the api backend, which pushes its own.
+		-- Both backends provide RefreshLooks now (on api it is the Shim's,
+		-- supplied by the hybrid facade). This is where a profile, accent or
+		-- Dark Mode change made while the journal was closed gets picked up:
+		-- the engine's live callback covers accent edits, but not every value
+		-- the shell reads, and compat has no live callback at all.
 		if S.RefreshLooks then S.RefreshLooks() end
 	end)
 	frame:HookScript("OnHide", function() fadeCollections(false) end)
@@ -2354,9 +2367,15 @@ local function skinDressUpButton()
 	local mjBtn = DressUpFrame and DressUpFrame.mjBtn
 	if not mjBtn then return end
 
-	S.Button(mjBtn)
-	local normal = mjBtn.GetNormalTexture and mjBtn:GetNormalTexture()
-	local pushed = mjBtn.GetPushedTexture and mjBtn:GetPushedTexture()
+	-- The button's whole visual is its Normal/Pushed art, the RedButton-Expand
+	-- arrow; it has no label and no named regions. Unnamed state textures
+	-- cannot ride through keepKeys, so park them on keys of our own first,
+	-- the same dance as dynamicFlightButton. Without this S.Button fades them
+	-- and the hover tint below lands on invisible art: a blank block.
+	mjBtn.euiNormal = mjBtn.GetNormalTexture and mjBtn:GetNormalTexture()
+	mjBtn.euiPushed = mjBtn.GetPushedTexture and mjBtn:GetPushedTexture()
+	S.Button(mjBtn, {"euiNormal", "euiPushed"})
+	local normal, pushed = mjBtn.euiNormal, mjBtn.euiPushed
 
 	local function colour(r, g, b)
 		if normal then normal:SetVertexColor(r, g, b) end

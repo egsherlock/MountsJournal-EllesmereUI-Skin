@@ -4,13 +4,19 @@
 	Resolves the primitive facade (`S`) the skin body draws through, from one of
 	two sources, chosen at PLAYER_LOGIN:
 
-	  api     EllesmereUI.RegisterSkin exists (8.6.7+). EllesmereUI owns every
-	          visual and we inherit its future changes for free.
+	  api     EllesmereUI.RegisterSkin exists AND its dispatcher is live
+	          (8.6.8+ with the EllesmereUIBlizzardSkin child addon enabled).
+	          We register through the official API, appear under Blizzard
+	          Window Skins > Third-Party Addons and follow its toggles, and
+	          inherit EllesmereUI's own primitives -- except Shell, ScrollBar
+	          and Checkbox, which stay ours because the engine's versions do
+	          not reproduce this skin's approved look. See HYBRID FACADE.
 
-	  compat  8.6.6 and earlier. Rebuilds the same facade from the public
-	          helpers 8.6.6 does export, the accent colour, the UI font, the
-	          pixel-perfect border helper, the Dark Mode fill and the Blizzard
-	          window style accessor.
+	  compat  8.6.6 and earlier, or 8.6.8+ without the child addon running.
+	          Rebuilds the same facade from the public helpers 8.6.6 does
+	          export, the accent colour, the UI font, the pixel-perfect border
+	          helper, the Dark Mode fill and the Blizzard window style
+	          accessor.
 
 	Why this file exists at all is the single most expensive lesson from
 	Postbox, repeated here verbatim because this addon had shipped with exactly
@@ -26,9 +32,12 @@
 	journal came up wholly unskinned, which is precisely the "Blizzard
 	background is still showing" symptom this was reported as.
 
-	The switch is automatic on update: when the user's EllesmereUI gains
-	RegisterSkin, the `api` backend takes over and this shim stops being used.
-	`/mjeuiskin` prints which one is live.
+	The switch is automatic on update: when the user's EllesmereUI gains a
+	LIVE RegisterSkin, the `api` backend takes over. Live is the operative
+	word: the 8.6.8 parent ships the RegisterSkin stub even when the child
+	addon is disabled, documented as "a silent no-op", so existence alone
+	proves nothing -- the gate is the dispatcher the child assigns at load.
+	`/mjeuiskin` prints which backend is live.
 
 	MATCHING THE WINDOW BEHIND US
 	-----------------------------
@@ -1064,15 +1073,28 @@ function ns.GetBackend() return backend or "pending" end
 function ns.GetFacade() return facade end
 function ns.HasAPI() return EUI.RegisterSkin ~= nil end
 
+-- RegisterSkin existing proves nothing: the 8.6.8 PARENT ships the stub even
+-- when the EllesmereUIBlizzardSkin child is disabled, documented as "a silent
+-- no-op". Registering with a dead stub means the callback never fires and the
+-- journal comes up wholly unskinned -- the same class of bug as gating on
+-- master-branch source (see the header). What proves the pipeline is live is
+-- the dispatcher the child's SkinAPI file assigns at load. When it is absent,
+-- compat still works in full: its helpers are parent-level, and the one that
+-- is not (GetBlizzWindowStyle) is pcall-guarded and "blizz" mode only.
+function ns.HasDispatcher()
+	return type(EUI._DispatchSkinRegistration) == "function"
+end
+
 
 --[[ WINDOW APPEARANCE ---------------------------------------------------------
-	Driven from the settings panel. Only meaningful on the compat backend: the
-	api backend's S.Shell draws EllesmereUI's own shell, whose textures are not
-	reachable through the facade, so there is nothing for us to repaint there.
-	ns.CanStyleShell() lets the options panel say so rather than offering a
-	control that silently does nothing.
+	Driven from the settings panel. The shell is drawn by our own Shell() on
+	BOTH backends now -- the hybrid facade keeps it local precisely so the
+	backdrop, opacity and edge settings keep meaning something -- so this is
+	unconditionally true. It stays a function because the options panel and
+	the diagnostic already call it, and because a future API version that
+	exposes the engine's shell textures could flip it back off.
 ------------------------------------------------------------------------------]]
-function ns.CanStyleShell() return backend == "compat" end
+function ns.CanStyleShell() return true end
 
 
 -- mode:   "fill" (Dark Mode plate) | "blizz" (EllesmereUI window art)
@@ -1113,14 +1135,56 @@ local function dispatch(S)
 end
 
 
+--[[ HYBRID FACADE -------------------------------------------------------------
+	The api backend does not hand the whole job to EllesmereUI. The day-of
+	cross-check against the 8.6.8 engine source (SKINNING_NOTES §6) found
+	three primitives whose engine versions do not reproduce this skin's
+	approved look, so those stay ours and everything else is inherited:
+
+	  Shell      the engine draws its opaque modern_blizz shell with a 25px
+	             title bar and the atlas border: no Dark Mode fill, no
+	             transparency, and every appearance setting dead. Ours keeps
+	             the user's backdrop, opacity and edge choices working.
+	  ScrollBar  the engine strips the arrows instead of redrawing them, has
+	             no groove, uses the 4px centre-strip thumb this skin
+	             deliberately widened to the thumb's own rect, and skips
+	             classic GetThumbTexture sliders entirely, which would revert
+	             those bars to stock Blizzard art.
+	  Checkbox   the engine borders the frame rect unless passed
+	             {borderInset}; the visible box is inset 4px, so the border
+	             sits proud of it. Ours insets both, unconditionally.
+
+	RefreshLooks is also ours: it repaints the shells and accent ticks the
+	Shim draws, which the engine cannot know about. It is additionally
+	registered with the engine's OnLooksChanged, so on this backend a live
+	accent or profile edit repaints the window with no reopen and no reload,
+	the one thing the compat backend cannot do.
+
+	The overrides live in a table of our own with the api facade behind it.
+	Writing into the facade itself would rewrite the primitives of every
+	other addon EllesmereUI skins.
+------------------------------------------------------------------------------]]
+local function hybridize(api)
+	if api.OnLooksChanged then
+		api.OnLooksChanged(function() Shim.RefreshLooks() end)
+	end
+	return setmetatable({
+		Shell = Shim.Shell,
+		ScrollBar = Shim.ScrollBar,
+		Checkbox = Shim.Checkbox,
+		RefreshLooks = Shim.RefreshLooks,
+	}, {__index = api})
+end
+
+
 local boot = CreateFrame("Frame")
 boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function(self)
 	self:UnregisterEvent("PLAYER_LOGIN")
 	resolveTheme()
-	if EUI.RegisterSkin then
+	if EUI.RegisterSkin and ns.HasDispatcher() then
 		backend = "api"
-		EUI.RegisterSkin(ADDON_NAME, dispatch)
+		EUI.RegisterSkin(ADDON_NAME, function(api) dispatch(hybridize(api)) end)
 	else
 		backend = "compat"
 		dispatch(Shim)
