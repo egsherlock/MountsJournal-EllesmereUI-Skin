@@ -1787,15 +1787,20 @@ local function journal_init(journal)
 			-- padded itself differently; chaining edge-to-edge with a 1px seam
 			-- is what the ElvUI reference does and it is the only way the row
 			-- lines up at every window width.
-			-- The 3px inset either end was the stock spacing, sized for art with
-			-- its own transparent margin. Flattened to solid blocks it reads as
-			-- the row failing to reach the panel it sits in, so bring both ends
-			-- out to a 1px hairline off the container edge.
-			local EDGE = 1
+			--
+			-- The row's OUTER edges anchor to mapSettings itself, not to
+			-- mapControl, and flush at 0: the surface the row should line up
+			-- with is the flags panel background, and that background is drawn
+			-- on mapSettings. Anchoring to the frame that owns the background
+			-- makes the edges match by construction. (A 1px hairline off
+			-- mapControl was tried first and read as the row stopping short of
+			-- the panel below it, a few pixels at screen scale, either side.)
+			-- Vertical stays on mapControl, whose band the row sits in.
 			local control = mapSettings.mapControl
 			if control and mapSettings.CurrentMap and mapSettings.existingListsToggle then
 				mapSettings.existingListsToggle:ClearAllPoints()
-				mapSettings.existingListsToggle:SetPoint("TOPRIGHT", control, "TOPRIGHT", -EDGE, -3)
+				mapSettings.existingListsToggle:SetPoint("TOP", control, "TOP", 0, -3)
+				mapSettings.existingListsToggle:SetPoint("RIGHT", mapSettings, "RIGHT", 0, 0)
 
 				mapSettings.CurrentMap:ClearAllPoints()
 				mapSettings.CurrentMap:SetPoint("LEFT", control, "LEFT", 134, -1)
@@ -1804,7 +1809,8 @@ local function journal_init(journal)
 
 				if mapSettings.dnr then
 					mapSettings.dnr:ClearAllPoints()
-					mapSettings.dnr:SetPoint("TOPLEFT", control, "TOPLEFT", EDGE, -3)
+					mapSettings.dnr:SetPoint("TOP", control, "TOP", 0, -3)
+					mapSettings.dnr:SetPoint("LEFT", mapSettings, "LEFT", 0, 0)
 					mapSettings.dnr:SetPoint("RIGHT", mapSettings.CurrentMap, "LEFT", -1, 0)
 				end
 			end
