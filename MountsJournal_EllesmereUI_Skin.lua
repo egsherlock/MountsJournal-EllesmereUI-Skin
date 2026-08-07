@@ -2881,6 +2881,27 @@ ns.RegisterSkin(ADDON_NAME, function(skin)
 			clearBackdrop(frame)
 			return skin.Panel(frame, opts)
 		end,
+
+		-- FadeRegions means "make this art go away", and the call sites do not
+		-- all hand it a frame. levelBG, the plate behind a pet's level number,
+		-- is a bare Texture rather than a container of them. The engine's
+		-- version walks frame:GetRegions() with no type check, so a Texture
+		-- reaching it is a hard error; the compat shim type-checks first and so
+		-- silently does nothing. Neither is what the call site asked for, and
+		-- the two backends have to read the same from up here, so absorb the
+		-- difference once rather than at two dozen call sites: a Texture goes to
+		-- alpha 0, which is exactly what fading its regions would have done had
+		-- it been the frame we assumed.
+		FadeRegions = function(frame, keep)
+			if not frame then return end
+			if not frame.GetRegions then
+				if frame.IsObjectType and frame:IsObjectType("Texture") then
+					frame:SetAlpha(0)
+				end
+				return
+			end
+			return skin.FadeRegions(frame, keep)
+		end,
 	}, {__index = skin})
 
 	stage("db", resolveDB)

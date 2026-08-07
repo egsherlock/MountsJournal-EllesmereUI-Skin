@@ -7,3 +7,14 @@ package-as: MountsJournal_EllesmereUI_Skin
 ignore:
   - .github
   - docs
+
+# Nominates the changelog for the GitHub release page and the CurseForge upload.
+# Without this the packager writes its own from the commits between tags, which
+# is the wrong voice and the wrong audience entirely.
+#
+# CHANGELOG.md is NOT in the ignore list above, so it also ships inside the addon
+# folder. That is deliberate: it is written for players, so it is worth having
+# somewhere a player can find it.
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
