@@ -655,6 +655,56 @@ function Shim.CloseButton(btn)
 end
 
 
+--[[ HINT ----------------------------------------------------------------------
+	A hover hint in the small card EllesmereUI's own option widgets use: 10pt,
+	dim white, quarter-second fade, the user's tooltip fill. The engine's api
+	facade carries no tooltip primitive and ShowWidgetTooltip is a plain
+	export, so this is ours on both backends (hybridize lists it). Where the
+	export is missing, GameTooltip carries the same words: a hint that
+	silently vanishes on an older engine is worse than a plainer one.
+
+	`text` is a string or a function returning one, resolved on each hover.
+	`opts` passes straight through to the engine: anchorPoint/anchorTo/
+	anchorX/anchorY for a fixed corner, or anchor = "below"|"left"|"right"|
+	"cursor"; justify and width as well. The hint hides on leave, on any
+	mouse button (a drag or a click is about to change what it describes)
+	and when the frame hides under the cursor.
+------------------------------------------------------------------------------]]
+local function showHint(owner, text, opts)
+	if type(text) == "function" then text = text() end
+	if not text then return end
+	if type(EUI.ShowWidgetTooltip) == "function" then
+		EUI.ShowWidgetTooltip(owner, text, opts)
+		return
+	end
+	if not GameTooltip then return end
+	GameTooltip:SetOwner(owner, "ANCHOR_TOPLEFT")
+	for line in tostring(text):gmatch("[^\n]+") do
+		GameTooltip:AddLine(line, 1, 1, 1, true)
+	end
+	GameTooltip:Show()
+end
+
+local function hideHint(owner)
+	if type(EUI.HideWidgetTooltip) == "function" then
+		EUI.HideWidgetTooltip()
+	elseif GameTooltip and GameTooltip:IsOwned(owner) then
+		GameTooltip:Hide()
+	end
+end
+
+function Shim.Hint(frame, text, opts)
+	if not (frame and frame.HookScript) then return end
+	local d = fd(frame)
+	if d.hint then return end
+	d.hint = true
+	frame:HookScript("OnEnter", function(self) showHint(self, text, opts) end)
+	frame:HookScript("OnLeave", hideHint)
+	frame:HookScript("OnMouseDown", hideHint)
+	frame:HookScript("OnHide", hideHint)
+end
+
+
 function Shim.Dropdown(dd)
 	if not dd or forbidden(dd) then return end
 	local d = fd(dd)
@@ -1173,6 +1223,7 @@ local function hybridize(api)
 		ScrollBar = Shim.ScrollBar,
 		Checkbox = Shim.Checkbox,
 		RefreshLooks = Shim.RefreshLooks,
+		Hint = Shim.Hint,
 	}, {__index = api})
 end
 

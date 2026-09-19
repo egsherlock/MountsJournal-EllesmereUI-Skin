@@ -63,7 +63,7 @@ Cost is a one-off pass at login plus hooks. There's no OnUpdate, no polling and 
 
 `/mjeuiskin behind` lists anything still drawing behind the window, and `/mjeuiskin tabs` compares the tab rows: where each tab and its label sit, the label's font, and the art. Both print what the frames really carry, which is usually the fastest way to tell a bug here apart from a Blizzard, EllesmereUI or MountsJournal change. If something looks like it moved, run `tabs` before and after and compare. `/mjeuiskin list` and `/mjeuiskin pet` do the same for the list column and the pet button.
 
-Right-clicking the resize grip snaps the window back to its smallest size, which is the same size as the other Collections tabs.
+Right-clicking the resize grip snaps the window back to its smallest size, which is the same size as the other Collections tabs. Hover the grip and it says so.
 
 ## Compatibility
 

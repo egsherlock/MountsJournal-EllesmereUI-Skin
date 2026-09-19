@@ -443,8 +443,13 @@ local function reportTabs()
 		local ok, point, rel, relPoint, x, y = pcall(t1.GetPoint, t1, 1)
 		if ok and point then
 			local relName = rel and ((rel.GetName and rel:GetName()) or tostring(rel)) or "nil"
-			print(("  CollectionsJournalTab1 anchored %s -> %s %s at %s,%s"):format(
-				tostring(point), relName, tostring(relPoint), tostring(x), tostring(y)))
+			-- Protected decides which of MountsJournal's two re-seats runs:
+			-- its Lua one returns early on a protected tab and the secure
+			-- snippet takes over, so the word matters when the row is low.
+			local okProt, prot = pcall(t1.IsProtected, t1)
+			print(("  CollectionsJournalTab1 anchored %s -> %s %s at %s,%s  (protected: %s)"):format(
+				tostring(point), relName, tostring(relPoint), tostring(x), tostring(y),
+				okProt and tostring(prot) or "?"))
 		end
 	end
 
@@ -1762,13 +1767,16 @@ end
 
 -- What atrocityEssentials actually drew on Collections' row: the plate's
 -- fill, read off the anonymous BackdropTemplate child it parks under a tab,
--- and the label fonts. Two fonts, because a selected tab is disabled and
--- Blizzard's select swaps its disabled font object for GameFontHighlightSmall
--- (which atrocityEssentials re-fonts globally, at its own size), while a
--- deselected tab wears the pinned 12pt one. Copying both from the tab in
--- each state is what makes ours change exactly as theirs do. Returns nil
--- until atrocityEssentials has dressed the row, so callers keep their
--- fallbacks until then and re-ask later.
+-- and the label font, read off a deselected tab. ONE font for both states:
+-- atrocityEssentials pins all three of a button's state font objects to
+-- the same face and size (its PinButtonFont, from S.SetFont), so a
+-- Collections tab's label keeps its width when selected, and only its
+-- colour changes. An earlier version also copied the selected tab's font,
+-- which Blizzard's select had just swapped for GameFontHighlightSmall at
+-- the global small size, and ours grew and shrank a pixel or two with
+-- every click while the row beside us held still. Returns nil until
+-- atrocityEssentials has dressed the row, so callers keep their fallbacks
+-- until then and re-ask later.
 local function aeReference()
 	local collect = CollectionsJournal
 	if not collect then return nil end
@@ -1793,7 +1801,6 @@ local function aeReference()
 				if ok and type(face) == "string" and not (issecretvalue and issecretvalue(size)) then
 					local enabled = not tab.IsEnabled or tab:IsEnabled()
 					if enabled and not out.font then out.font = {face, size, flags} end
-					if not enabled and not out.fontSelected then out.fontSelected = {face, size, flags} end
 				end
 			end
 		end
@@ -1887,10 +1894,8 @@ local function applyReference(d)
 	d.bd:SetBackdropColor(c[1], c[2], c[3], c[4])
 	if d.fonts and ref.font then
 		local f = ref.font
-		local fs = ref.fontSelected or f
-		for setter, obj in pairs(d.fonts) do
-			local use = setter == "SetDisabledFontObject" and fs or f
-			pcall(obj.SetFont, obj, use[1], use[2], use[3])
+		for _, obj in pairs(d.fonts) do
+			pcall(obj.SetFont, obj, f[1], f[2], f[3])
 		end
 	end
 end
@@ -2008,20 +2013,6 @@ local function paintBottomTab(tab, selected)
 		return
 	end
 
-	-- Sized to the label, as atrocityEssentials sizes Collections' tabs
-	-- (its PinTextFit is this same call). MountsJournal's come up a fixed
-	-- 72 each, and that width is what set the window's minimum: its
-	-- getMinMaxSize adds the two tab rows plus 20, and with Collections'
-	-- row label-sized and ours not, the sum overshot Collections' own 703
-	-- by a few pixels, so the journal could never be dragged as narrow as
-	-- the tabs beside it. Label-sized, the rows fit inside 703 with room.
-	--
-	-- With an explicit minimum of 1: TabResize otherwise floors a tab at
-	-- the width of its Left + Right art, ~72, which is exactly the 72 all
-	-- three came up at, so the plain call changed nothing. Collections'
-	-- labels are all wider than that floor, so its tabs are text + 20 in
-	-- practice, and this makes ours the same rule.
-	if PanelTemplates_TabResize then pcall(PanelTemplates_TabResize, tab, 0, nil, 1) end
 	-- Blizzard offsets the label per state to sit on its own art; with the
 	-- art gone it is centred, as the row beside us has it.
 	if tab.Text then
@@ -2039,6 +2030,26 @@ local function paintBottomTab(tab, selected)
 		local obj = (selected and d.fonts.SetDisabledFontObject) or d.fonts.SetNormalFontObject
 		if obj then pcall(tab.SetNormalFontObject, tab, obj) end
 	end
+	-- Sized to the label, as atrocityEssentials sizes Collections' tabs
+	-- (its PinTextFit is this same call). MountsJournal's come up a fixed
+	-- 72 each, and that width is what set the window's minimum: its
+	-- getMinMaxSize adds the two tab rows plus 20, and with Collections'
+	-- row label-sized and ours not, the sum overshot Collections' own 703
+	-- by a few pixels, so the journal could never be dragged as narrow as
+	-- the tabs beside it. Label-sized, the rows fit inside 703 with room.
+	--
+	-- With an explicit minimum of 1: TabResize otherwise floors a tab at
+	-- the width of its Left + Right art, ~72, which is exactly the 72 all
+	-- three came up at, so the plain call changed nothing. Collections'
+	-- labels are all wider than that floor, so its tabs are text + 20 in
+	-- practice, and this makes ours the same rule.
+	--
+	-- LAST, after the fonts above are settled. This used to run first, so
+	-- the tab was fitted to the label as it was drawn a moment ago and
+	-- only caught up on the next repaint: a width that changed a beat
+	-- after every click. The fit must measure the font the label is about
+	-- to be drawn in.
+	if PanelTemplates_TabResize then pcall(PanelTemplates_TabResize, tab, 0, nil, 1) end
 	local br, bg, bb = aeBrand()
 	d.sel:SetColorTexture(br, bg, bb, AE_SELECTED_A)
 	d.sel:SetShown(selected and true or false)
@@ -2179,12 +2190,38 @@ local function journal_init(journal)
 			hidden MountsJournal itself puts the row back on Collections,
 			and this leaves that alone.
 		------------------------------------------------------------------]]
+		--[[ ...and its bottom is Collections' own bottom, not a copy -----
+			The first proxy was SIZED from bgFrame:GetSize(), and that was
+			the whole bug: the journal window's height carries scale-noise
+			in the fourth decimal (606.0002 against Collections' 606.0001),
+			so the proxy's bottom landed at 717.9998, exactly where the
+			window's does, against Collections' 717.9999. Measured on
+			Mounts with Tab1 confirmed on the proxy: every label still read
+			697.9998, the same as hanging off the window, while off
+			Collections they read 698.0000. A ten-thousandth is enough to
+			tip the text a pixel. So the proxy's corners are ANCHORED to
+			Collections' corners with a zero offset, and the only thing
+			added is the journal's extra height and width rounded to whole
+			units: nothing at the default size, and exactly the pixels
+			MountsJournal wanted otherwise. No copied float ever reaches
+			the row.
+		------------------------------------------------------------------]]
 		local proxy = CreateFrame("Frame", nil, collect)
-		proxy:SetPoint("TOPLEFT", collect, "TOPLEFT", 0, 0)
 		proxy:EnableMouse(false)
+		local proxyDW, proxyDH
 		local function syncProxy()
-			local w, h = bgFrame:GetSize()
-			if w and h and w > 0 and h > 0 then proxy:SetSize(w, h) end
+			local bw, bh = bgFrame:GetSize()
+			local cw, ch = collect:GetSize()
+			if not (bw and bh and cw and ch and bw > 0 and bh > 0) then return end
+			local dw = math.floor(bw - cw + .5)
+			local dh = math.floor(bh - ch + .5)
+			if dw < 0 then dw = 0 end
+			if dh < 0 then dh = 0 end
+			if dw == proxyDW and dh == proxyDH then return end
+			proxyDW, proxyDH = dw, dh
+			proxy:ClearAllPoints()
+			proxy:SetPoint("TOPLEFT", collect, "TOPLEFT", 0, 0)
+			proxy:SetPoint("BOTTOMRIGHT", collect, "BOTTOMRIGHT", dw, -dh)
 		end
 		syncProxy()
 
@@ -2200,6 +2237,31 @@ local function journal_init(journal)
 		hook(journal, "updateCollectionTabs", reseat)
 		bgFrame:HookScript("OnShow", reseat)
 		bgFrame:HookScript("OnSizeChanged", syncProxy)
+
+		--[[ After MountsJournal's secure re-seat, not just its Lua one ----
+			MountsJournal has two paths that hang Tab1 off its window. The
+			Lua one, updateCollectionTabs, runs from bgFrame's OnShow and is
+			hooked above. The other is the `update` snippet on its secure
+			show/hide handler (journal._s, a SecureHandlerShowHideTemplate
+			under Blizzard's MountJournal): it shows bgFrame, which runs the
+			OnShow above and our re-seat inside it, and THEN, if Tab1 is
+			protected, re-anchors Tab1 to bgFrame itself, last thing. On a
+			client where the tab is protected, updateCollectionTabs returns
+			early and that snippet is the only re-seat that lands, and it
+			lands after ours. (Not this client: /mjeuiskin tabs reports
+			protected: false, and Tab1 was on the proxy when the labels
+			still dropped; the cause was the proxy's copied size, above.
+			This stays for the clients where it is the live path.)
+			HookScript on the handler frame runs after the template's own
+			OnShow, which is what runs the snippet, so this is the one
+			moment ours is guaranteed to be last. The handler is
+			MountsJournal's own frame, not a Blizzard one, so hooking it
+			taints nothing that was clean.
+		------------------------------------------------------------------]]
+		local handler = journal._s
+		if handler and handler.HookScript then
+			handler:HookScript("OnShow", reseat)
+		end
 		reseat()
 	end)
 
@@ -2229,6 +2291,20 @@ local function journal_init(journal)
 			if journal.setScrollGridMounts then journal:setScrollGridMounts(true) end
 			if journal.event then pcall(journal.event, journal, "JOURNAL_RESIZED") end
 		end)
+	end)
+
+	--[[ THE GRIP SAYS SO --------------------------------------------------------
+		Nothing about a 16px corner grabber suggests a right-click, so it says
+		so on hover, in the small card EllesmereUI uses for its own widgets.
+		Hung above the grip with its right edge on the grip's, so it stays
+		over the window rather than the screen corner the grip usually sits
+		in. Its own stage: losing the hint must not cost the reset above.
+	--------------------------------------------------------------------------]]
+	stage("journal:gripHint", function()
+		local resize = bgFrame.resize
+		if not (resize and S.Hint) then return end
+		S.Hint(resize, "Drag to resize\nRight-click to reset",
+			{anchorPoint = "BOTTOMRIGHT", anchorTo = "TOPRIGHT", anchorY = 6})
 	end)
 
 	stage("journal:shell", function()

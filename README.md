@@ -101,7 +101,8 @@ moved, run `tabs` before and after and compare the two. `/mjeuiskin list` and
 `/mjeuiskin pet` do the same for the list column and the pet button.
 
 Right-clicking the resize grip snaps the window back to its smallest size,
-which is the same size as the other Collections tabs.
+which is the same size as the other Collections tabs. Hover the grip and it
+says so.
 
 ## Compatibility
 

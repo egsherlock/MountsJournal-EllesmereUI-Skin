@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.1
+
+**New**
+
+- **Hovering the resize grip now tells you what it does:** drag to resize,
+  right-click to snap back to the smallest size. It's the same small tooltip
+  EllesmereUI uses for its own controls, and it stays out of the way while
+  you drag.
+
+**Fixed**
+
+- **The Collections tab labels no longer drop when you open the Mounts tab.**
+  1.1.0's fix hung the row from a stand-in that copied the journal window's
+  size a hair too faithfully, and that hair was enough to push the text down
+  a pixel. The row now sits on the Collections window's own bottom edge, and
+  moves down only by whole pixels when the journal is taller.
+- **The Model, Map and Settings tabs no longer change width when clicked.**
+  The selected label was being measured in one font and drawn in another, so
+  the tab was fitted to the wrong width until the next repaint. Both states
+  now share one size, as the Collections tabs beside them do.
+
 ## 1.1.0
 
 A polish release. Almost everything here is about the journal sitting
