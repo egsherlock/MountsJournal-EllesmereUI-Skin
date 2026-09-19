@@ -90,6 +90,39 @@ local function hook(obj, method, fn)
 end
 
 
+--[[ COMBAT -------------------------------------------------------------------
+	Several of MountsJournal's frames are protected (its tabs are driven by
+	a secure click handler; the summon button is a SecureActionButton), and
+	the client refuses a size or anchor write on a protected frame from
+	addon code while in combat. pcall does not catch it: a blocked action
+	is not a Lua error, it is an ADDON_ACTION_BLOCKED event, which is what
+	BugSack shows. So a write that could land on one of those frames asks
+	first, and if the answer is no, waits for combat to end.
+------------------------------------------------------------------------------]]
+local function canWrite(frame)
+	if not (InCombatLockdown and InCombatLockdown()) then return true end
+	local ok, prot = pcall(frame.IsProtected, frame)
+	return not (ok and prot)
+end
+
+local afterCombatQueue = {}
+local afterCombatFrame
+local function afterCombat(fn)
+	if not (InCombatLockdown and InCombatLockdown()) then fn() return end
+	afterCombatQueue[#afterCombatQueue + 1] = fn
+	if not afterCombatFrame then
+		afterCombatFrame = CreateFrame("Frame")
+		afterCombatFrame:SetScript("OnEvent", function(self)
+			self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+			local queue = afterCombatQueue
+			afterCombatQueue = {}
+			for i = 1, #queue do pcall(queue[i]) end
+		end)
+	end
+	afterCombatFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+end
+
+
 --[[ SETTINGS ------------------------------------------------------------------
 	Border style and size for the windows we skin, so users get the same
 	border/glow/shadow choice EllesmereUI gives them everywhere else in the
@@ -1965,6 +1998,12 @@ end
 local function seatBottomTabs(bgFrame, style)
 	local s, m, mo = bgFrame.settingsTab, bgFrame.mapTab, bgFrame.modelTab
 	if not (s and m and mo) then return end
+	-- The tabs are protected, so a first show in combat seats the row
+	-- once the fight is over rather than tripping the client now.
+	if not (canWrite(s) and canWrite(m) and canWrite(mo)) then
+		afterCombat(function() seatBottomTabs(bgFrame, style) end)
+		return
+	end
 	if style == "atrocity" then
 		-- Plates inset 2px on a 1px seam: the frames overlap by 3. The end
 		-- plate flush with the window edge, as atrocityEssentials' gap
@@ -2005,6 +2044,20 @@ local function paintBottomTab(tab, selected)
 	end
 	if d.style == "blizzard" then return end
 	if selected == nil then selected = isSelectedTab(tab) end
+
+	-- The tab is protected and the paint ends in a resize; in combat the
+	-- client blocks that write (ADDON_ACTION_BLOCKED, not a Lua error, so
+	-- the pcall below never saw it). Paint once combat ends instead.
+	if not canWrite(tab) then
+		if not d.repaintPending then
+			d.repaintPending = true
+			afterCombat(function()
+				d.repaintPending = nil
+				if not tab:IsForbidden() then paintBottomTab(tab) end
+			end)
+		end
+		return
+	end
 
 	if d.style == "eui" then
 		-- The engine's primitive re-reads selection itself and is guarded,
@@ -2733,24 +2786,11 @@ local function journal_init(journal)
 				bgFrame.rightInset:SetPoint("TOPLEFT", journal.filtersPanel, "TOPRIGHT", 4, 0)
 				bgFrame.rightInset:SetPoint("BOTTOM", bgFrame, "BOTTOM", 0, 27)
 			end
-			do
+			if journal.summonButton then
 				local summon = journal.summonButton
-				local function seatSummon()
-					if not summon then return true end
-					if InCombatLockdown and InCombatLockdown() then return false end
+				afterCombat(function()
 					summon:SetPoint("BOTTOMLEFT", bgFrame, "BOTTOMLEFT", 5, 3)
-					return true
-				end
-				if not seatSummon() then
-					local waiter = CreateFrame("Frame")
-					waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
-					waiter:SetScript("OnEvent", function(self)
-						if seatSummon() then
-							self:UnregisterAllEvents()
-							self:SetScript("OnEvent", nil)
-						end
-					end)
-				end
+				end)
 			end
 
 			-- The bar first: the narrowing below reads its width.

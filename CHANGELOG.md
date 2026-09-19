@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.2
+
+**Fixed**
+
+- **Opening the Mounts tab during combat no longer produces a "blocked action"
+  error.** The Model, Map and Settings tabs are protected by the game while
+  you fight, and the skin was fitting them to their labels the moment the
+  window appeared. It now waits until combat ends and fits them then, so
+  BugSack stays quiet and the tabs still come up sized right.
+
 ## 1.1.1
 
 **New**
