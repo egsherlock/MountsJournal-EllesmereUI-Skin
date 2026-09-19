@@ -2283,8 +2283,21 @@ local function journal_init(journal)
 		end
 		syncProxy()
 
+		-- Tab1 is a Blizzard tab, not one of MountsJournal's protected
+		-- ones, so on most clients this write is allowed in combat and
+		-- must run: MountsJournal's own re-seat still hangs the row off
+		-- its window mid-fight, and skipping ours here brought the
+		-- one-pixel drop back for every fight. Where the tab IS protected
+		-- the re-seat waits for combat to end, once.
+		local reseatPending
 		local function reseat()
-			if InCombatLockdown and InCombatLockdown() then return end
+			if not canWrite(tab) then
+				if not reseatPending then
+					reseatPending = true
+					afterCombat(function() reseatPending = nil; reseat() end)
+				end
+				return
+			end
 			if not bgFrame:IsShown() then return end
 			syncProxy()
 			local okP, point, rel, rPoint, x, y = pcall(tab.GetPoint, tab, 1)

@@ -10,6 +10,9 @@
   window appeared. The labels still get their font and colours straight
   away; only the fit waits, and the tabs snap to their proper width the
   moment combat ends.
+- **The Collections tab labels no longer drop when you open the Mounts tab in
+  combat.** 1.1.1 fixed this out of combat, but the fix was sitting out every
+  fight. It now runs in combat too.
 
 ## 1.1.1
 
