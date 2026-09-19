@@ -69,6 +69,11 @@ Right-clicking the resize grip snaps the window back to its smallest size, which
 
 Works on EllesmereUI 8.6.6 and newer. On 8.6.8+ with the Blizz UI Enhanced module running, it registers through EllesmereUI's official skinning API and shows up in its Third-Party Addons list. Without that module, the same primitives are rebuilt from the public helpers EllesmereUI exports. Either way the look is identical and you don't need to do anything.
 
+## Also by the same author
+
+- [Rematch EllesmereUI Skin](https://www.curseforge.com/projects/1702206) does the same for Rematch's pet journal, built on the same foundation as this one, so the two Collections tabs match each other as well as the rest of your UI.
+- [Postbox](https://www.curseforge.com/projects/1639171) is a full mailbox replacement: clear a full inbox in one click or just the mail you choose, complete recipients as you type, and see what is waiting without visiting a mailbox. It wears your EllesmereUI or ElvUI look.
+
 ## Licence
 
 GPLv3. This is a derivative work of [MountsJournal_ElvUI_Skin](https://github.com/sfmict/MountsJournal-ElvUI-Skin) by sfmict. The map of which frames need skinning came from there; the EllesmereUI implementation is new. Thanks to sfmict, who wrote both MountsJournal and the ElvUI skin this was translated from, and to EllesmereGaming for EllesmereUI.

@@ -117,6 +117,17 @@ addon, the same set of primitives is rebuilt from the public helpers
 EllesmereUI does export. You don't need to do anything either way, and
 `/mjeuiskin` will tell you which backend is running.
 
+## Also by the same author
+
+- [Rematch EllesmereUI Skin](https://github.com/egsherlock/Rematch-EllesmereUI-Skin)
+  does the same for Rematch's pet journal, built on the same foundation as
+  this one, so the two Collections tabs match each other as well as the rest
+  of your UI.
+- [Postbox](https://github.com/egsherlock/Postbox) is a full mailbox
+  replacement: clear a full inbox in one click or just the mail you choose,
+  complete recipients as you type, and see what is waiting without visiting a
+  mailbox. It wears your EllesmereUI or ElvUI look.
+
 ## Licence
 
 GPLv3. This is a derivative work of
