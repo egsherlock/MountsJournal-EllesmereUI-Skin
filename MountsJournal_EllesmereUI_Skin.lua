@@ -205,12 +205,20 @@ local function framePath(frame, depth)
 end
 
 
-local function rectOf(obj)
+-- Floored by default, which is what the overlap tests want. `precise`
+-- returns the values to four decimals as strings, for the tab report: a
+-- fractional frame height that floors away is exactly what moved the
+-- Collections row's labels, and a probe that rounds cannot see it.
+local function rectOf(obj, precise)
 	local ok, l, b, w, h = pcall(function()
 		return obj:GetLeft(), obj:GetBottom(), obj:GetWidth(), obj:GetHeight()
 	end)
 	if not ok or not l or not w then return nil end
 	if issecretvalue and (issecretvalue(l) or issecretvalue(w)) then return nil end
+	if precise then
+		local function f(v) return (("%.4f"):format(v or 0):gsub("%.?0+$", "")) end
+		return f(l), f(b), f(w), f(h)
+	end
 	return math.floor(l), math.floor(b or 0), math.floor(w), math.floor(h or 0)
 end
 
@@ -291,18 +299,56 @@ local function reportBehind()
 end
 
 
+--[[ WHICH LOOK DOES THE COLLECTIONS ROW WEAR ----------------------------------
+	Three possibilities on a given client, decided without needing the
+	Collections window to have been opened:
+
+	  "atrocity"  atrocityEssentials is loaded. It skins Collections' tabs
+	              (Skinning/Frames/Collectables.lua) with a BackdropTemplate
+	              plate under each one, and that is the look the row wears.
+	  "eui"       no atrocityEssentials, and the Collections row carries
+	              EllesmereUI's own Tab primitive: a tab the engine has
+	              dressed carries two labels (Blizzard's hidden one and the
+	              engine's), a stock one carries one.
+	  "blizzard"  neither. The row is stock 12.x Blizzard art.
+
+	Measured, not inferred (Rematch skin, 2026-09-19): with atrocityEssentials
+	off, the Collections row on that client was plain Blizzard even with
+	EllesmereUI's Collections window skin on, so the engine's window style
+	says nothing about the tabs. Only the row itself does. Until the
+	Collections window exists the answer is "blizzard", and the paint
+	re-asks.
+------------------------------------------------------------------------------]]
+local function collectionsTabStyle()
+	if _G.atrocityEssentials then return "atrocity" end
+	local ref = CollectionsJournal and CollectionsJournal.MountsTab
+	if ref and ref.GetRegions then
+		local labels = 0
+		for i = 1, select("#", ref:GetRegions()) do
+			local r = select(i, ref:GetRegions())
+			if r and r.IsObjectType and r:IsObjectType("FontString") then labels = labels + 1 end
+		end
+		if labels >= 2 then return "eui" end
+	end
+	return "blizzard"
+end
+
+
 --[[ HOW DOES THE ROW NEXT TO US ACTUALLY LOOK ---------------------------------
 	/mjeuiskin tabs, run with the journal open.
 
 	Our tabs are meant to match Collections' own row directly beside them, and
-	whether they do depends on something not readable from source: whether
-	EllesmereUI skinned that row at all on this client. Its Collections pack
-	reaches the tabs by fixed keys (MountsTab, PetsTab, ...), so a Blizzard
-	rename leaves them stock, and stock tabs carry Blizzard's gold label,
-	which is nothing like the white one the engine paints.
+	whether they do depends on something not readable from source: which
+	addon, if any, skinned that row on this client (see collectionsTabStyle).
+	Rather than guess, print every tab with its geometry, its label's seat
+	and font, and its visible art, and let the comparison settle it.
 
-	Rather than guess which of those two we should be copying, print every
-	label with its actual colour and let the comparison settle it.
+	Run it twice, once on another Collections tab and once on Mounts, and
+	the difference between the two dumps says what moved: the tab itself
+	(MountsJournal re-anchors CollectionsJournalTab1 to its own window
+	whenever that window shows, and the whole row hangs off Tab1), the
+	label within the tab (PanelTemplates seats it at a different y per
+	selection state), or only its font (a state font object re-applied).
 ------------------------------------------------------------------------------]]
 local function dumpTab(label, tab)
 	if not tab then
@@ -321,9 +367,37 @@ local function dumpTab(label, tab)
 			end
 		end
 	end
-	print(("  %s [%s]: %s"):format(label,
+	-- Geometry first, so two rows can be compared for spacing, height and
+	-- seat by subtraction rather than by eye. Two decimals, not floored:
+	-- the label wobble turned out to live in the fourth decimal of a frame
+	-- height, and floored numbers said the two rows were identical.
+	local l, b, w, h = rectOf(tab, true)
+	print(("  %s [%s] %sx%s at %s,%s: %s"):format(label,
 		tab:IsShown() and "shown" or "hidden",
+		tostring(w), tostring(h), tostring(l), tostring(b),
 		#bits > 0 and table.concat(bits, "  ") or "no FontString"))
+
+	-- The label's own seat and face. A label that has moved while its tab
+	-- has not is PanelTemplates re-seating it (a different y per selection
+	-- state); a label whose font has changed is a state font object being
+	-- re-applied. Both read as "the text shifted" from across the room.
+	local text = tab.Text or (tab.GetFontString and tab:GetFontString())
+	if text and text.GetPoint then
+		local tl, tb, tw, th = rectOf(text, true)
+		local okP, point, _, relPoint, x, y = pcall(text.GetPoint, text, 1)
+		local seat = (okP and point)
+			and ("%s->%s %s,%s"):format(tostring(point), tostring(relPoint), tostring(x), tostring(y))
+			or "?"
+		local font = "?"
+		local okF, face, size, flags = pcall(text.GetFont, text)
+		if okF and type(face) == "string" then
+			if issecretvalue and issecretvalue(size) then size = "secret" end
+			font = ("%s %s %s"):format(face:match("[^\\/]+$") or face,
+				tostring(size), tostring(flags or ""))
+		end
+		print(("      label %sx%s at %s,%s  seat %s  font %s"):format(
+			tostring(tw), tostring(th), tostring(tl), tostring(tb), seat, font))
+	end
 
 	-- The labels matched once the colours did, so whatever still differs is in
 	-- the plate behind them. Print the visible textures too rather than
@@ -351,8 +425,30 @@ end
 
 
 local function reportTabs()
-	print("  |cffffff00Collections' own row|r (what we should match):")
 	local collect = CollectionsJournal
+	local bgFrame = MountsJournalFrame and MountsJournalFrame.bgFrame
+	print("  Collections row wears: " .. collectionsTabStyle())
+
+	-- The two frames the rows hang off. MountsJournal re-anchors Collections'
+	-- first tab from one to the other as its window shows and hides, so if
+	-- their bottom edges differ, the whole Collections row moves with it.
+	for _, pair in ipairs({{"CollectionsJournal", collect}, {"bgFrame", bgFrame}}) do
+		if pair[2] then
+			local l, b, w, h = rectOf(pair[2], true)
+			print(("  %s %sx%s at %s,%s"):format(pair[1], tostring(w), tostring(h), tostring(l), tostring(b)))
+		end
+	end
+	local t1 = CollectionsJournalTab1
+	if t1 and t1.GetPoint then
+		local ok, point, rel, relPoint, x, y = pcall(t1.GetPoint, t1, 1)
+		if ok and point then
+			local relName = rel and ((rel.GetName and rel:GetName()) or tostring(rel)) or "nil"
+			print(("  CollectionsJournalTab1 anchored %s -> %s %s at %s,%s"):format(
+				tostring(point), relName, tostring(relPoint), tostring(x), tostring(y)))
+		end
+	end
+
+	print("  |cffffff00Collections' own row|r (what we should match):")
 	if collect then
 		for _, key in ipairs({"MountsTab", "PetsTab", "ToysTab", "HeirloomsTab",
 			"WardrobeTab", "WarbandScenesTab"}) do
@@ -366,7 +462,6 @@ local function reportTabs()
 	end
 
 	print("  |cffffff00Ours|r:")
-	local bgFrame = MountsJournalFrame and MountsJournalFrame.bgFrame
 	if bgFrame and type(bgFrame.Tabs) == "table" then
 		for i = 1, #bgFrame.Tabs do
 			local tab = bgFrame.Tabs[i]
@@ -377,6 +472,100 @@ local function reportTabs()
 end
 
 
+-- /mjeuiskin list: the left column's geometry, to four decimals, so a
+-- clipped row or a misaligned edge is a subtraction rather than a guess.
+local function reportList()
+	local journal = MountsJournalFrame
+	local bgFrame = journal and journal.bgFrame
+	if not bgFrame then print("  no journal window") return end
+	local function line(label, obj)
+		if not obj then print(("  %s: missing"):format(label)) return end
+		local l, b, w, h = rectOf(obj, true)
+		local shown = obj.IsShown and (obj:IsShown() and "shown" or "hidden") or ""
+		print(("  %s [%s] %sx%s at %s,%s"):format(label, shown,
+			tostring(w), tostring(h), tostring(l), tostring(b)))
+	end
+	line("bgFrame", bgFrame)
+	line("CollectionsJournal", CollectionsJournal)
+	line("navBar", journal.navBar)
+	line("filtersPanel", journal.filtersPanel)
+	line("shownPanel", journal.shownPanel)
+	line("leftInset", bgFrame.leftInset)
+	line("plate", journal.euiListPlate)
+	local box = journal.scrollBox
+	line("scrollBox", box)
+	line("scrollBox.ScrollTarget", box and box.ScrollTarget)
+	line("scrollBar", bgFrame.leftInset and bgFrame.leftInset.scrollBar)
+	if box and box.ScrollTarget then
+		local row = (select(1, box.ScrollTarget:GetChildren()))
+		line("first row", row)
+		if row then
+			line("  row.dragButton", row.dragButton)
+			line("  row.fly", row.fly)
+			line("  row.swimming", row.swimming)
+			line("  row.name", row.name)
+		end
+	end
+	print(("  view: curGrid=%s gridN=%s"):format(tostring(journal.curGrid), tostring(journal.gridN)))
+	line("summonButton", journal.summonButton)
+	line("profilesMenu", bgFrame.profilesMenu)
+	line("useMountsJournalButton", journal.useMountsJournalButton)
+	line("RematchFrame", RematchFrame)
+	if RematchFrame then
+		line("RematchFrame.Canvas", RematchFrame.Canvas)
+		local pets = RematchFrame.PetsPanel
+		line("Rematch PetsPanel", pets)
+		line("Rematch PetsPanel.List", pets and pets.List)
+		line("Rematch bottombar", RematchFrame.BottomBar or _G.RematchBottomBar)
+	end
+end
+
+
+-- /mjeuiskin pet: every frame and shown texture on the mount info panel's
+-- pet button, with frame level, draw layer and sublevel, colour and size,
+-- so "what draws over the favourite star" is read off rather than guessed.
+local function reportPet()
+	local journal = MountsJournalFrame
+	local info = journal and journal.mountDisplay and journal.mountDisplay.info
+	local btn = info and info.petSelectionBtn
+	if not btn then print("  no pet button (open the journal in list view)") return end
+	local function walk(frame, label, depth)
+		if depth > 4 or not frame.GetRegions then return end
+		local l, b, w, h = rectOf(frame, true)
+		print(("  %s%s level=%s %sx%s at %s,%s%s"):format(("  "):rep(depth), label,
+			tostring(frame:GetFrameLevel()), tostring(w), tostring(h), tostring(l), tostring(b),
+			frame:IsShown() and "" or " [hidden]"))
+		for i = 1, select("#", frame:GetRegions()) do
+			local r = select(i, frame:GetRegions())
+			if r and r.IsObjectType and r:IsShown() and (r:GetAlpha() or 0) > .01 then
+				local layer, sub = r:GetDrawLayer()
+				local key = "?"
+				for k, v in pairs(frame) do if v == r and type(k) == "string" then key = k break end end
+				if r:IsObjectType("Texture") then
+					local rl, rb, rw, rh = rectOf(r, true)
+					local ok, cr, cg, cb, ca = pcall(r.GetVertexColor, r)
+					print(("  %s  tex %s %s/%s %sx%s at %s,%s a=%.2f rgb %s %s"):format(("  "):rep(depth),
+						key, tostring(layer), tostring(sub), tostring(rw), tostring(rh), tostring(rl), tostring(rb),
+						r:GetAlpha(), ok and cr and ("%.2f/%.2f/%.2f"):format(cr, cg, cb) or "?", texDesc(r)))
+				elseif r:IsObjectType("FontString") then
+					print(("  %s  text %s %s/%s '%s'"):format(("  "):rep(depth), key,
+						tostring(layer), tostring(sub), tostring(r:GetText() or "")))
+				end
+			end
+		end
+		for i = 1, select("#", frame:GetChildren()) do
+			local child = select(i, frame:GetChildren())
+			if child and not child:IsForbidden() then
+				local key = "?"
+				for k, v in pairs(frame) do if v == child and type(k) == "string" then key = k break end end
+				walk(child, key, depth + 1)
+			end
+		end
+	end
+	walk(btn, "petSelectionBtn", 0)
+end
+
+
 SLASH_MJEUISKIN1 = "/mjeuiskin"
 SlashCmdList.MJEUISKIN = function(msg)
 	local function yn(v) return v and "|cff44ff44yes|r" or "|cffff5555NO|r" end
@@ -384,6 +573,14 @@ SlashCmdList.MJEUISKIN = function(msg)
 
 	if type(msg) == "string" and msg:lower():find("behind") then
 		reportBehind()
+		return
+	end
+	if type(msg) == "string" and msg:lower():find("list") then
+		reportList()
+		return
+	end
+	if type(msg) == "string" and msg:lower():find("pet") then
+		reportPet()
 		return
 	end
 	if type(msg) == "string" and msg:lower():find("tabs") then
@@ -641,23 +838,67 @@ end
 local stateBorders = setmetatable({}, {__mode = "k"})
 
 
-local function newEdges(parent, region, pad)
+-- Where an edge draws in the stack. An edge around an ICON must sit above
+-- the icon and below whatever the button lays over it: the favourite star
+-- (OVERLAY), the weight badge, the "hidden" cross. So it goes on a host at
+-- the parent's own frame level, where regions from the two frames
+-- interleave by draw layer (the engine's border container does the same),
+-- in the icon's OWN layer one sublevel up. Not the next layer: the pet
+-- icon is ARTWORK and its star OVERLAY, and strips at OVERLAY sub 0 drew
+-- over a star at OVERLAY sub 2, because sublevels are not honoured across
+-- frames within a layer, layers are. A host one level up would draw above
+-- everything on the button. An edge around a whole frame keeps the
+-- top-of-everything placement. Lifted from the Rematch skin, which hit
+-- the same thing with its level badges.
+local NEXT_LAYER = {BACKGROUND = "BORDER", BORDER = "ARTWORK", ARTWORK = "OVERLAY"}
+
+-- onParent: draw the strips as regions of `parent` itself, anchored to the
+-- icon, rather than on a host frame. For the pet icons (MJPetInfo): the
+-- icon is ARTWORK and the star OVERLAY on the same frame, and a host at
+-- that frame's level still drew above the star whatever layer its strips
+-- used, while the mount icons (icon and star on the drag button, host a
+-- child of it) came out right with the same code. Whatever the engine's
+-- rule for that case is, same-frame ordering is defined: a region one
+-- sublevel above the icon is above the icon and below the star, always.
+-- Safe because MJPetInfo is never handed to an engine primitive, so no
+-- restrip pass can reach regions we put on it.
+local function newEdges(parent, region, pad, onParent)
 	pad = pad or 0
 
 	-- The strips live on a child frame of ours rather than directly on the
 	-- host. EllesmereUI re-fades every unprotected region of a skinned frame
 	-- when it restrips (it does so whenever Collections is shown, which is our
-	-- window), and only regions it knows about survive. Putting ours one level
-	-- down puts them out of reach entirely, the same shape the suite's own
-	-- PP border container uses, and for the same reason.
-	local host = CreateFrame("Frame", nil, parent)
-	host:SetAllPoints(region)
-	host:EnableMouse(false)
-	host:SetFrameLevel(parent:GetFrameLevel() + 1)
+	-- window), and only regions it knows about survive. Putting ours on a
+	-- frame of our own puts them out of reach entirely, the same shape the
+	-- suite's own PP border container uses, and for the same reason.
+	local layer, sub = "OVERLAY", 7
+	local level = parent:GetFrameLevel() + 1
+	local iconLayer, iconSub
+	if region ~= parent and region.GetDrawLayer then iconLayer, iconSub = region:GetDrawLayer() end
+	if iconLayer and NEXT_LAYER[iconLayer] then
+		iconSub = tonumber(iconSub) or 0
+		if iconSub < 7 then
+			layer, sub = iconLayer, iconSub + 1
+		else
+			layer, sub = NEXT_LAYER[iconLayer], 0
+		end
+		level = parent:GetFrameLevel()
+	end
+
+	local owner, host
+	if onParent and region ~= parent then
+		owner, host = parent, region
+	else
+		host = CreateFrame("Frame", nil, parent)
+		host:SetAllPoints(region)
+		host:EnableMouse(false)
+		host:SetFrameLevel(level)
+		owner = host
+	end
 
 	local edges = {}
 	for i = 1, 4 do
-		local t = host:CreateTexture(nil, "OVERLAY", nil, 7)
+		local t = owner:CreateTexture(nil, layer, nil, sub)
 		t:SetColorTexture(BRD_R, BRD_G, BRD_B, 1)
 		edges[i] = t
 	end
@@ -694,8 +935,8 @@ local function paintState(state)
 end
 
 
-local function newState(parent, region, pad)
-	local state = {edges = newEdges(parent, region, pad)}
+local function newState(parent, region, pad, onParent)
+	local state = {edges = newEdges(parent, region, pad, onParent)}
 	stateBorders[state] = true
 	return state
 end
@@ -809,10 +1050,17 @@ local function skinSliderFrame(frame)
 end
 
 
+-- The bottom tab row repaints from here too; it reads its colours live off
+-- the neighbouring Collections row. Declared up here because that section
+-- comes later in the file, and assigned there as `function repaintBottomTabs`
+-- (never `local function`, which would bind a second, unrelated local).
+local repaintBottomTabs
+
 local function looksChanged()
 	for tex, alpha in pairs(washes) do paintWash(tex, alpha) end
 	for state in pairs(stateBorders) do paintState(state) end
 	for slider in pairs(sliders) do paintSlider(slider) end
+	if repaintBottomTabs then repaintBottomTabs() end
 end
 
 
@@ -1017,6 +1265,31 @@ local function flatButton(btn, keepKeys)
 	S.WhiteButtonLabel(btn)
 end
 
+
+-- A button swaps its label's font object per state (normal, highlight,
+-- disabled), and the three need not share a size: on this client the
+-- Mount button's label grew on hover. Point the highlight and disabled
+-- objects at the normal one's face, size and flags, keeping each state's
+-- own colour, so only the colour changes with the state.
+local function pinButtonFonts(btn)
+	if not (btn and btn.GetNormalFontObject) then return end
+	local normal = btn:GetNormalFontObject()
+	if not (normal and normal.GetFont) then return end
+	local face, size, flags = normal:GetFont()
+	if type(face) ~= "string" or (issecretvalue and issecretvalue(size)) then return end
+	for _, pair in ipairs({{"GetHighlightFontObject", "SetHighlightFontObject"},
+		{"GetDisabledFontObject", "SetDisabledFontObject"}}) do
+		local get, set = btn[pair[1]], btn[pair[2]]
+		local cur = get and get(btn)
+		if cur and set and cur.GetFont then
+			local obj = CreateFont("MJEUISkinBtnFont" .. pair[1] .. (tostring(btn):gsub("%W", "")))
+			obj:CopyFontObject(cur)
+			obj:SetFont(face, size, flags)
+			pcall(set, btn, obj)
+		end
+	end
+end
+
 -- Icon-bearing action button: flatten the frame but keep the icon, and square
 -- the icon's baked bevel.
 --
@@ -1167,7 +1440,7 @@ local function petButtonSkin(btn)
 		if infoFrame then
 			if infoFrame.icon then
 				squareIcon(infoFrame.icon)
-				local state = newState(infoFrame, infoFrame.icon, 1)
+				local state = newState(infoFrame, infoFrame.icon, 1, true)
 				bindHover(btn, state)
 				bindSelected(state, btn.selectedTexture)
 				bindQuality(state, infoFrame.qualityBorder)
@@ -1250,12 +1523,28 @@ local function petSelectionBtnSkin(btn)
 	S.Button(btn, {"bg"})
 	if btn.bg then squareIcon(btn.bg) end
 
+	-- S.Button puts the facade's 1px border on the button, on a container
+	-- one frame level UP (PP.CreateBorder: level + 1, OVERLAY 7). The
+	-- button and the icon are the same 38x38 rect, and the favourite star
+	-- hangs off the icon's top-left corner, so that border's top and left
+	-- strips run through the star (/mjeuiskin pet: container level 1004,
+	-- star on infoFrame at level 1003). The icon's own quality edge, a
+	-- pixel outside, is the border this button shows; the facade's is
+	-- faded. Alpha on the container, so a restrip pass cannot bring it
+	-- back region by region.
+	for i = 1, select("#", btn:GetChildren()) do
+		local child = select(i, btn:GetChildren())
+		if child and child ~= btn.infoFrame and child._top and child._bottom then
+			child:SetAlpha(0)
+		end
+	end
+
 	local infoFrame = btn.infoFrame
 	if not infoFrame then return end
 
 	if infoFrame.icon then
 		squareIcon(infoFrame.icon)
-		local state = newState(infoFrame, infoFrame.icon, 1)
+		local state = newState(infoFrame, infoFrame.icon, 1, true)
 		bindHover(btn, state)
 		bindQuality(state, infoFrame.qualityBorder)
 	end
@@ -1265,6 +1554,17 @@ end
 
 
 --[[ MOUNT SCROLL BUTTONS ------------------------------------------------------]]
+-- How much the list was narrowed from the right (journal:list). List rows
+-- are a fixed 188 wide from their template (/mjeuiskin list: ScrollTarget
+-- 184, row 188), so a narrower box alone pushed the type buttons hanging
+-- off the row's right past the box's clip edge. Each row gives up the same
+-- amount instead; the name column has room to spare (147 wide in 188).
+-- Applied from a hook on the view's ResizeFrame, not here: the grid list
+-- view calls frame:SetSize(templateWidth, templateHeight) on EVERY acquire
+-- (ScrollBoxListBiaxalViewMixin:ResizeFrame), so a width set once at skin
+-- time lasted until the row was next recycled.
+local listNarrow = 0
+
 -- Hoisted out of the loop so it is created once rather than per Update.
 local function skinMountRow(btn)
 	if btn and not btn.euiSkinned then
@@ -1274,7 +1574,41 @@ local function skinMountRow(btn)
 			-- Grid view: a model tile with a drag button over it. Art is
 			-- faded by name rather than wholesale, these rows carry
 			-- meaningful regions (faction, pet type) alongside the chrome.
-			newState(btn, btn, 0)
+			--
+			-- The tile is a BackdropTemplate wearing Blizzard's rounded
+			-- tooltip border (MJMountListButton_OnLoad), which showed as
+			-- rounded corners inside our square edge. Swap it for the same
+			-- backdrop minus the edge, so only the square edge remains. The
+			-- fill is kept as MountsJournal's own: the tooltip background
+			-- texture under .1 grey, which is darker than a plain white
+			-- texture under the same colour would be (tried, and the tiles
+			-- came out lighter than before). Insets go to 0 now that there
+			-- is no edge to inset from.
+			-- MountsJournal writes the tile's state into the border colour on
+			-- every refresh and hover (gold selected, grey otherwise); with no
+			-- edge file those writes draw nothing, but the `selected` flag
+			-- it sets alongside them is the signal, mirrored into our edge
+			-- from a hook on the same call.
+			if btn.SetBackdrop then
+				btn:SetBackdrop({bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+					tile = true, tileSize = 14})
+				btn:SetBackdropColor(.1, .1, .1, .9)
+			end
+			-- The type selector (fly / ground / swim) chains down from `fly`,
+			-- which MountsJournal seats at x=6, 2px right of the icon at 4.
+			-- Bring it out to x=3, the icon's visible left edge: our 1px strip
+			-- sits one pixel outside the icon. Ground and swim follow it.
+			if btn.fly and btn.fly.SetPoint then
+				btn.fly:SetPoint("TOPLEFT", btn, "TOPLEFT", 3, -44)
+			end
+			local tile = newState(btn, btn, 0)
+			bindHover(btn, tile)
+			if btn.SetBackdropBorderColor then
+				hook(btn, "SetBackdropBorderColor", function(self)
+					tile.selected = self.selected or nil
+					paintState(tile)
+				end)
+			end
 
 			local drag = btn.dragButton
 			if drag then
@@ -1300,6 +1634,12 @@ local function skinMountRow(btn)
 			local state = newState(btn, btn, 0)
 			bindHover(btn, state)
 			bindSelected(state, btn.selectedTexture)
+
+			-- The same faint hover wash the Rematch skin gives its pet rows,
+			-- so the two lists read as one family on the inset plate.
+			local hover = btn:CreateTexture(nil, "HIGHLIGHT")
+			hover:SetAllPoints(btn)
+			hover:SetColorTexture(1, 1, 1, .05)
 
 			if btn.factionIcon then btn.factionIcon:SetDrawLayer("OVERLAY") end
 
@@ -1354,6 +1694,424 @@ local function tabOnLeave(self)
 end
 
 
+--[[ THE MODEL / MAP / SETTINGS ROW --------------------------------------------
+	These three are stock PanelTabButtonTemplate tabs, the same widget as
+	Collections' Mounts / Pets / Toys row beside them, and for a long time
+	the right call was to leave them alone: stock beside stock matches by
+	construction, and every attempt to dress them moved them away from
+	their neighbours (the stage comment in journal_init has that history).
+
+	That holds only while Collections' row IS stock. Where something else
+	dresses that row, ours stay Blizzard next to it and stop matching. The
+	Rematch skin found who that something is on this client: not
+	EllesmereUI, whose Collections pack steps over foreign frames, but
+	atrocityEssentials, part of the atrocityUI package, which hangs a
+	BackdropTemplate plate under each Collections tab (the /fstack tell: an
+	anonymous child frame carrying a Center texture). So the row is dressed
+	to match whichever of the three looks collectionsTabStyle reports.
+
+	"atrocity", its recipe read from atrocityEssentials' SkinningAPI: every
+	texture stripped; a backdrop plate inset 2px in the control colour with
+	a 1px edge in the theme border colour, one frame level below the tab; a
+	grey 15% hover over the plate; the theme font at 12pt outlined, set
+	through the button's three state font objects so Blizzard's gold/white
+	colouring keeps working; and a brand-coloured 35% plate inside the
+	backdrop while selected. The fill colour and the fonts are then read
+	live off Collections' own tabs once atrocityEssentials has dressed them,
+	which is the reference that matters, with its public Theme table and
+	its documented constants as the fallbacks. Plates inset 2px on a 1px
+	seam means the frames overlap by 3, and the end tab's plate sits flush
+	with the window's right edge, the mirror of how atrocityEssentials
+	aligns Collections' first plate with the left one.
+
+	"eui": one S.Tab per tab, then the engine's own row treatment, 2px off
+	the height and a 1px seam. "blizzard": untouched, as before.
+
+	Ported from the Rematch skin, where the atrocity recipe was measured
+	against the Collections row and confirmed. Rematch's tabs needed a
+	Blizzard face created on top of them; these already are that face, so
+	the dressing goes straight on.
+------------------------------------------------------------------------------]]
+local bottomTabs = setmetatable({}, {__mode = "k"})
+
+-- atrocityEssentials' documented constants; the live values are preferred
+-- wherever they can be read (aeReference).
+local AE_CONTROL = {.055, .055, .055, .90}
+local AE_HOVER = {.851, .851, .851, .15}
+local AE_SELECTED_A = .35
+
+local function aeTheme()
+	local ae = _G.atrocityEssentials
+	return ae and type(ae.Theme) == "table" and ae.Theme or nil
+end
+
+local function aeBrand()
+	local t = aeTheme()
+	local b = t and t.brand
+	if type(b) == "table" and b[1] then return b[1], b[2], b[3] end
+	return .451, .506, 1
+end
+
+local function aeBorder()
+	local t = aeTheme()
+	local b = t and t.border
+	if type(b) == "table" and b[1] then return b[1], b[2], b[3], b[4] or 1 end
+	return 0, 0, 0, 1
+end
+
+
+-- What atrocityEssentials actually drew on Collections' row: the plate's
+-- fill, read off the anonymous BackdropTemplate child it parks under a tab,
+-- and the label fonts. Two fonts, because a selected tab is disabled and
+-- Blizzard's select swaps its disabled font object for GameFontHighlightSmall
+-- (which atrocityEssentials re-fonts globally, at its own size), while a
+-- deselected tab wears the pinned 12pt one. Copying both from the tab in
+-- each state is what makes ours change exactly as theirs do. Returns nil
+-- until atrocityEssentials has dressed the row, so callers keep their
+-- fallbacks until then and re-ask later.
+local function aeReference()
+	local collect = CollectionsJournal
+	if not collect then return nil end
+	local out = {}
+	for _, key in ipairs({"MountsTab", "PetsTab", "ToysTab", "HeirloomsTab",
+		"WardrobeTab", "WarbandScenesTab"}) do
+		local tab = collect[key]
+		if tab and not tab:IsForbidden() then
+			if not out.control and tab.GetChildren then
+				for i = 1, select("#", tab:GetChildren()) do
+					local child = select(i, tab:GetChildren())
+					if child and child.GetBackdropColor then
+						local ok, r, g, b, a = pcall(child.GetBackdropColor, child)
+						if ok and r then out.control = {r, g, b, a or 1} end
+						break
+					end
+				end
+			end
+			local text = tab.Text
+			if text and text.GetFont then
+				local ok, face, size, flags = pcall(text.GetFont, text)
+				if ok and type(face) == "string" and not (issecretvalue and issecretvalue(size)) then
+					local enabled = not tab.IsEnabled or tab:IsEnabled()
+					if enabled and not out.font then out.font = {face, size, flags} end
+					if not enabled and not out.fontSelected then out.fontSelected = {face, size, flags} end
+				end
+			end
+		end
+	end
+	if not out.control then return nil end
+	return out
+end
+
+
+-- Dress a Blizzard tab the way atrocityEssentials dresses Collections'.
+local function dressFaceAtrocity(face)
+	local d = {style = "atrocity"}
+	for _, t in ipairs(face.TabTextures or {}) do t:SetAlpha(0) end
+	for _, k in ipairs({"Left", "Middle", "Right", "LeftActive", "MiddleActive", "RightActive",
+		"LeftHighlight", "MiddleHighlight", "RightHighlight"}) do
+		if face[k] then face[k]:SetAlpha(0) end
+	end
+	local hl = face.GetHighlightTexture and face:GetHighlightTexture()
+	if hl then hl:SetAlpha(0) end
+	if face.SetPushedTextOffset then face:SetPushedTextOffset(0, 0) end
+	-- Zero the per-state label offsets, so PanelTemplates' own re-seating on
+	-- every selection change lands centred rather than fighting ours. Both
+	-- of Blizzard's offsets are measured against art that is now invisible.
+	face.selectedTextX, face.selectedTextY = 0, 0
+	face.deselectedTextX, face.deselectedTextY = 0, 0
+
+	local bd = CreateFrame("Frame", nil, face, "BackdropTemplate")
+	bd:SetPoint("TOPLEFT", face, "TOPLEFT", 2, -2)
+	bd:SetPoint("BOTTOMRIGHT", face, "BOTTOMRIGHT", -2, 2)
+	local lvl = face:GetFrameLevel()
+	bd:SetFrameLevel(lvl > 0 and lvl - 1 or 0)
+	bd:SetBackdrop({bgFile = "Interface\\Buttons\\WHITE8x8",
+		edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1})
+	bd:SetBackdropColor(AE_CONTROL[1], AE_CONTROL[2], AE_CONTROL[3], AE_CONTROL[4])
+	bd:SetBackdropBorderColor(aeBorder())
+	d.bd = bd
+
+	local hover = face:CreateTexture(nil, "HIGHLIGHT")
+	hover:SetColorTexture(AE_HOVER[1], AE_HOVER[2], AE_HOVER[3], AE_HOVER[4])
+	hover:SetPoint("TOPLEFT", bd, "TOPLEFT", 1, -1)
+	hover:SetPoint("BOTTOMRIGHT", bd, "BOTTOMRIGHT", -1, 1)
+	d.hover = hover
+
+	local sel = face:CreateTexture(nil, "ARTWORK")
+	local br, bg, bb = aeBrand()
+	sel:SetColorTexture(br, bg, bb, AE_SELECTED_A)
+	sel:SetPoint("TOPLEFT", bd, "TOPLEFT", 1, -1)
+	sel:SetPoint("BOTTOMRIGHT", bd, "BOTTOMRIGHT", -1, 1)
+	sel:Hide()
+	d.sel = sel
+
+	local t = aeTheme()
+	local fontPath = t and t.fontFace
+	local size = (t and t.fontSizeNormal) or 12
+	local outline = (t and t.fontOutline) or "OUTLINE"
+	if face.Text and fontPath then
+		-- Blizzard's three state font objects carry the gold/white colours;
+		-- only the face, size and outline change, per state, so the colour
+		-- state machine keeps working. Kept on the dress record because
+		-- PanelTemplates_SelectTab overwrites the disabled one with
+		-- Blizzard's own small font on every selection; paint re-pins them.
+		d.fonts = {}
+		for _, pair in ipairs({{"GetNormalFontObject", "SetNormalFontObject"},
+			{"GetHighlightFontObject", "SetHighlightFontObject"},
+			{"GetDisabledFontObject", "SetDisabledFontObject"}}) do
+			local get, set = face[pair[1]], face[pair[2]]
+			local cur = get and get(face)
+			if cur and set then
+				local obj = CreateFont("MJEUISkinTabFont" .. pair[1] .. (tostring(face):gsub("%W", "")))
+				obj:CopyFontObject(cur)
+				obj:SetFont(fontPath, size, outline)
+				obj:SetShadowOffset(0, 0)
+				d.fonts[pair[2]] = obj
+				pcall(set, face, obj)
+			end
+		end
+	end
+	return d
+end
+
+
+-- Once atrocityEssentials has dressed the Collections row, take the fill
+-- and fonts off it rather than off its constants. One-shot per tab: the
+-- reference does not change within a session short of a /reload.
+local function applyReference(d)
+	if d.refApplied or not d.bd then return end
+	local ref = aeReference()
+	if not ref then return end
+	d.refApplied = true
+	local c = ref.control
+	d.bd:SetBackdropColor(c[1], c[2], c[3], c[4])
+	if d.fonts and ref.font then
+		local f = ref.font
+		local fs = ref.fontSelected or f
+		for setter, obj in pairs(d.fonts) do
+			local use = setter == "SetDisabledFontObject" and fs or f
+			pcall(obj.SetFont, obj, use[1], use[2], use[3])
+		end
+	end
+end
+
+
+local function repinFonts(face)
+	local d = bottomTabs[face]
+	if not (d and d.fonts) then return end
+	for setter, obj in pairs(d.fonts) do
+		local set = face[setter]
+		if set then pcall(set, face, obj) end
+	end
+end
+
+
+local function dressFaceEui(face)
+	face.selectedTextX, face.selectedTextY = 0, 0
+	face.deselectedTextX, face.deselectedTextY = 0, 0
+	S.Tab(face)
+end
+
+
+-- PanelTemplates_SetTab writes the parent's selectedTab before it walks
+-- the row, so this is current from inside the select/deselect hooks too.
+local function isSelectedTab(tab)
+	local parent = tab:GetParent()
+	local sel = parent and parent.selectedTab
+	local tabs = parent and parent.Tabs
+	if not (sel and type(tabs) == "table") then return false end
+	return tabs[sel] == tab
+end
+
+
+--[[ SEATING THE ROW -----------------------------------------------------------
+	MountsJournal chains the three right-to-left from settingsTab, which it
+	seats TOPRIGHT to the window's BOTTOMRIGHT at (-6, 2), each next tab 3px
+	further left: Blizzard's spacing, which the stock art is drawn for.
+	Nothing of MountsJournal's re-anchors them at runtime, so this is set
+	once.
+
+	The y is read off Collections' first tab rather than assumed. Blizzard's
+	XML says 2, and so does MountsJournal's; measured under
+	atrocityEssentials the Collections row sits at 1 (/mjeuiskin tabs:
+	"CollectionsJournalTab1 anchored TOPLEFT -> ... at -2,1", tab tops at
+	718 against a window bottom of 717). At 2 ours sat a pixel higher, and
+	the 2px-inset plate's top landed ON the window edge instead of leaving
+	the 1px seam the row beside it has. Whatever the number is on a given
+	client, matching it is what makes the rows level.
+------------------------------------------------------------------------------]]
+local function collectionsRowY()
+	-- The seat as Blizzard set it, recorded by journal:collectionsRow
+	-- before that stage starts adding the window-height correction to the
+	-- live offset. Reading the live offset here seated our row a whole
+	-- window-height correction too low after a taller window was restored.
+	local j = MountsJournalFrame
+	if j and type(j.euiCollectionsRowY) == "number" then return j.euiCollectionsRowY end
+	local t1 = CollectionsJournalTab1
+	if t1 and t1.GetPoint then
+		local ok, point, _, _, _, y = pcall(t1.GetPoint, t1, 1)
+		if ok and point and type(y) == "number" and not (issecretvalue and issecretvalue(y)) then
+			return y
+		end
+	end
+	return 1
+end
+
+local function seatBottomTabs(bgFrame, style)
+	local s, m, mo = bgFrame.settingsTab, bgFrame.mapTab, bgFrame.modelTab
+	if not (s and m and mo) then return end
+	if style == "atrocity" then
+		-- Plates inset 2px on a 1px seam: the frames overlap by 3. The end
+		-- plate flush with the window edge, as atrocityEssentials' gap
+		-- calibration puts Collections' first one flush with the left.
+		s:ClearAllPoints()
+		s:SetPoint("TOPRIGHT", bgFrame, "BOTTOMRIGHT", 2, collectionsRowY())
+		m:ClearAllPoints()
+		m:SetPoint("RIGHT", s, "LEFT", 3, 0)
+		mo:ClearAllPoints()
+		mo:SetPoint("RIGHT", m, "LEFT", 3, 0)
+	elseif style == "eui" then
+		-- The engine's NormalizeTabRow, which it runs over Collections' row:
+		-- 2px off every skinned tab's height, once, and a 1px seam.
+		for _, t in ipairs({s, m, mo}) do
+			if not t.euiTrimmed then
+				t.euiTrimmed = true
+				local h = t:GetHeight() or 0
+				if h > 2 then t:SetHeight(h - 2) end
+			end
+		end
+		m:ClearAllPoints()
+		m:SetPoint("RIGHT", s, "LEFT", -1, 0)
+		mo:ClearAllPoints()
+		mo:SetPoint("RIGHT", m, "LEFT", -1, 0)
+	end
+end
+
+
+local function paintBottomTab(tab, selected)
+	local d = bottomTabs[tab]
+	if not d then return end
+	-- A tab dressed stock before the Collections window existed is promoted
+	-- to the engine look if that row turns out to wear it.
+	if d.style == "blizzard" and collectionsTabStyle() == "eui" then
+		d.style = "eui"
+		dressFaceEui(tab)
+		seatBottomTabs(tab:GetParent(), "eui")
+	end
+	if d.style == "blizzard" then return end
+	if selected == nil then selected = isSelectedTab(tab) end
+
+	if d.style == "eui" then
+		-- The engine's primitive re-reads selection itself and is guarded,
+		-- so a repeat call is its own repaint.
+		S.Tab(tab)
+		return
+	end
+
+	-- Sized to the label, as atrocityEssentials sizes Collections' tabs
+	-- (its PinTextFit is this same call). MountsJournal's come up a fixed
+	-- 72 each, and that width is what set the window's minimum: its
+	-- getMinMaxSize adds the two tab rows plus 20, and with Collections'
+	-- row label-sized and ours not, the sum overshot Collections' own 703
+	-- by a few pixels, so the journal could never be dragged as narrow as
+	-- the tabs beside it. Label-sized, the rows fit inside 703 with room.
+	--
+	-- With an explicit minimum of 1: TabResize otherwise floors a tab at
+	-- the width of its Left + Right art, ~72, which is exactly the 72 all
+	-- three came up at, so the plain call changed nothing. Collections'
+	-- labels are all wider than that floor, so its tabs are text + 20 in
+	-- practice, and this makes ours the same rule.
+	if PanelTemplates_TabResize then pcall(PanelTemplates_TabResize, tab, 0, nil, 1) end
+	-- Blizzard offsets the label per state to sit on its own art; with the
+	-- art gone it is centred, as the row beside us has it.
+	if tab.Text then
+		tab.Text:ClearAllPoints()
+		tab.Text:SetPoint("CENTER", tab, "CENTER", 0, 0)
+	end
+	applyReference(d)
+	repinFonts(tab)
+	-- MountsJournal replaces Enable and Disable on these tabs with no-ops
+	-- (its secure handler disables them on click instead), so Blizzard's
+	-- select does not always reach the disabled state whose font object
+	-- carries the white selected label. Point the normal object at the
+	-- selected one while selected, and the label is white either way.
+	if d.fonts and tab.SetNormalFontObject then
+		local obj = (selected and d.fonts.SetDisabledFontObject) or d.fonts.SetNormalFontObject
+		if obj then pcall(tab.SetNormalFontObject, tab, obj) end
+	end
+	local br, bg, bb = aeBrand()
+	d.sel:SetColorTexture(br, bg, bb, AE_SELECTED_A)
+	d.sel:SetShown(selected and true or false)
+	d.bd:SetBackdropBorderColor(aeBorder())
+end
+
+
+-- Blizzard re-seats the label and swaps the disabled font object on every
+-- selection change, so the repaint runs after each of those, from the
+-- global helpers MountsJournal drives its row through. Guarded to our own
+-- tabs; the same functions serve every tab row in the game.
+local bottomTabsHooked = false
+local function ensureBottomTabHooks()
+	if bottomTabsHooked then return end
+	bottomTabsHooked = true
+	if PanelTemplates_SelectTab then
+		hooksecurefunc("PanelTemplates_SelectTab", function(tab)
+			if tab and bottomTabs[tab] then paintBottomTab(tab, true) end
+		end)
+	end
+	if PanelTemplates_DeselectTab then
+		hooksecurefunc("PanelTemplates_DeselectTab", function(tab)
+			if tab and bottomTabs[tab] then paintBottomTab(tab, false) end
+		end)
+	end
+	if PanelTemplates_SetDisabledTabState then
+		hooksecurefunc("PanelTemplates_SetDisabledTabState", function(tab)
+			if tab and bottomTabs[tab] then paintBottomTab(tab, false) end
+		end)
+	end
+end
+
+
+local function dressBottomTabs(bgFrame)
+	local tabs = bgFrame.Tabs
+	if type(tabs) ~= "table" or #tabs == 0 then return end
+	local style = collectionsTabStyle()
+	for i = 1, #tabs do
+		local tab = tabs[i]
+		if tab and not tab:IsForbidden() and not bottomTabs[tab] then
+			if style == "atrocity" then
+				bottomTabs[tab] = dressFaceAtrocity(tab)
+				-- PanelTabButtonMixin re-sizes the tab on every OnShow and
+				-- on DISPLAY_SIZE_CHANGED, so the label fit is re-applied
+				-- after both; HookScript runs after the template's own.
+				tab:HookScript("OnShow", function(t) paintBottomTab(t) end)
+				tab:HookScript("OnEvent", function(t) paintBottomTab(t) end)
+			else
+				if style == "eui" then dressFaceEui(tab) end
+				bottomTabs[tab] = {style = style}
+			end
+		end
+	end
+	ensureBottomTabHooks()
+	seatBottomTabs(bgFrame, style)
+	for i = 1, #tabs do paintBottomTab(tabs[i]) end
+	-- The reference row may not have been dressed yet the first time
+	-- through (atrocityEssentials and MountsJournal both build on
+	-- Blizzard_Collections loading, in no fixed order), so re-ask on show.
+	bgFrame:HookScript("OnShow", function()
+		for i = 1, #tabs do paintBottomTab(tabs[i]) end
+	end)
+end
+
+
+-- Filled in for the forward declaration by looksChanged.
+function repaintBottomTabs()
+	for tab in pairs(bottomTabs) do
+		if not tab:IsForbidden() then paintBottomTab(tab) end
+	end
+end
+
+
 -- Split into isolated sections on purpose. This function reaches well over a
 -- hundred frames across MountsJournal's whole UI, and any one of those paths
 -- could move between versions. Run as a single block, one wrong frame costs the
@@ -1362,6 +2120,116 @@ local function journal_init(journal)
 	local bgFrame = journal.bgFrame
 	if not bgFrame or journal.euiInit then return end
 	journal.euiInit = true
+
+	--[[ KEEP THE COLLECTIONS TAB ROW ON THE COLLECTIONS FRAME -----------------
+		MountsJournal re-anchors CollectionsJournalTab1 from CollectionsJournal
+		to its own window whenever that window shows, and back when it hides
+		(journal:updateCollectionTabs, plus the secure handler's update
+		snippet for the protected case), so that the row follows the bottom
+		edge of a window the user has made taller. Every other Collections
+		tab chains off Tab1, so the whole row moves with it.
+
+		Measured to four decimals (/mjeuiskin tabs on Toy Box, then Mounts),
+		the two anchor frames sit at the same bottom edge and the tab rects
+		are identical either way, but the labels are not: hanging off
+		Collections they read 698.0000, a snapped whole number, and hanging
+		off the journal window they read 697.9998, tab-plus-eleven with no
+		snap at all, which is also what our own three labels read in both
+		runs because their tabs are children of that window. Text whose
+		position derives from the journal window is not pixel-snapped the
+		way the rest of the Collections frame is, so the row's labels render
+		a pixel lower the moment Mounts is engaged and climb back on leaving.
+
+		The window is a child of a CheckButton MountsJournal flattens with
+		SetFlattensRenderLayers; whatever the exact rule, the cure is to not
+		derive the row's position from it. After each of MountsJournal's
+		re-anchors, the row goes back on CollectionsJournal, offset by the
+		whole-unit difference between the two windows' bottom edges, which
+		is zero at the default size and exactly the amount MountsJournal
+		wanted otherwise. OnSizeChanged keeps it following a resize drag
+		live. Only Blizzard's y offset is derived; x is re-read each time
+		because atrocityEssentials calibrates it.
+	--------------------------------------------------------------------------]]
+	stage("journal:collectionsRow", function()
+		local tab, collect = CollectionsJournalTab1, CollectionsJournal
+		if not (tab and collect and tab.GetPoint) then return end
+		local ok, _, _, _, _, y0 = pcall(tab.GetPoint, tab, 1)
+		if not (ok and type(y0) == "number") then return end
+		if issecretvalue and issecretvalue(y0) then return end
+		local baseY = y0
+		-- The seat Blizzard gave the row, for our own row to read
+		-- (collectionsRowY). Nothing below ever changes it.
+		journal.euiCollectionsRowY = baseY
+
+		--[[ A proxy for the window, outside the flattened subtree ---------
+			Two earlier versions re-hung the row on CollectionsJournal with
+			a computed offset (measured bottoms, then the height difference)
+			and both lost the row after a reload with a resized window: a
+			computed offset is only right at the moment it is computed, and
+			every path that re-seats Tab1 afterwards (MountsJournal's own,
+			the secure handler's, atrocityEssentials' calibration) carried
+			or reset it. So: no offset. A plain frame parented to
+			CollectionsJournal, at its top-left, kept the same SIZE as the
+			journal window, and Tab1 hung off that proxy's bottom with
+			Blizzard's own x and y, untouched. The row follows the window
+			height because the proxy does, whatever seats it and whenever;
+			and the proxy is a child of CollectionsJournal, not of the
+			flattened CheckButton the window lives under, so the labels
+			snap the way the rest of Collections does. When the window is
+			hidden MountsJournal itself puts the row back on Collections,
+			and this leaves that alone.
+		------------------------------------------------------------------]]
+		local proxy = CreateFrame("Frame", nil, collect)
+		proxy:SetPoint("TOPLEFT", collect, "TOPLEFT", 0, 0)
+		proxy:EnableMouse(false)
+		local function syncProxy()
+			local w, h = bgFrame:GetSize()
+			if w and h and w > 0 and h > 0 then proxy:SetSize(w, h) end
+		end
+		syncProxy()
+
+		local function reseat()
+			if InCombatLockdown and InCombatLockdown() then return end
+			if not bgFrame:IsShown() then return end
+			syncProxy()
+			local okP, point, rel, rPoint, x, y = pcall(tab.GetPoint, tab, 1)
+			if not (okP and point) or rel == proxy then return end
+			pcall(tab.SetPoint, tab, point, proxy, rPoint, x or 0, y or baseY)
+		end
+
+		hook(journal, "updateCollectionTabs", reseat)
+		bgFrame:HookScript("OnShow", reseat)
+		bgFrame:HookScript("OnSizeChanged", syncProxy)
+		reseat()
+	end)
+
+	--[[ RIGHT-CLICK THE RESIZE GRIP TO RESET ---------------------------------
+		The grip resizes on a left drag; a right-click puts the window back
+		at its minimum size, which is Collections' own. The sequence is the
+		one MountsJournal runs when a drag stops, minus the StopMovingOrSizing
+		there was no drag for: save the size, re-anchor, re-lay the list, and
+		tell the map and model display the window changed.
+	--------------------------------------------------------------------------]]
+	stage("journal:resetSize", function()
+		local resize = bgFrame.resize
+		if not (resize and resize.HookScript and journal.getMinMaxSize) then return end
+		resize:HookScript("OnMouseUp", function(_, button)
+			if button ~= "RightButton" then return end
+			if InCombatLockdown and InCombatLockdown() then return end
+			if bgFrame.isSizing then return end
+			local ok, minW, minH = pcall(journal.getMinMaxSize, journal)
+			if not (ok and minW and minH) then return end
+			bgFrame:SetSize(minW, minH)
+			local cfg = _G.MountsJournal and _G.MountsJournal.config
+			if cfg then cfg.journalWidth, cfg.journalHeight = minW, minH end
+			if CollectionsJournal then
+				bgFrame:ClearAllPoints()
+				bgFrame:SetPoint("TOPLEFT", CollectionsJournal, "TOPLEFT", 0, 0)
+			end
+			if journal.setScrollGridMounts then journal:setScrollGridMounts(true) end
+			if journal.event then pcall(journal.event, journal, "JOURNAL_RESIZED") end
+		end)
+	end)
 
 	stage("journal:shell", function()
 		shellPortraitFrame(bgFrame)
@@ -1580,17 +2448,34 @@ local function journal_init(journal)
 		-- as misalignment: two toggles floating off the search box, which then
 		-- does not reach the Filter button. Same seating as the reference.
 		--
-		-- filtersButton is deliberately untouched. MountsJournal already
-		-- chains it LEFT to the search box and TOPRIGHT to the panel, so it
-		-- fills whatever is left; re-anchoring it would drop the right edge.
+		--
+		-- One bar, the width of the panel: the view toggle on the panel's
+		-- left edge (the type bar and the list plate start there too), the
+		-- filters toggle 1px after it, the search box 1px after that, and
+		-- the Filter button on the panel's right edge, 1px after the box.
+		-- The box is the one that flexes; the buttons keep their size.
+		--
+		-- MountsJournal creates filtersButton with no width, LEFT chained to
+		-- the search box and TOPRIGHT at -3, so it filled whatever was
+		-- left. Anchoring the box's RIGHT to it would close a loop, so the
+		-- button gets its width in numbers instead: MountsJournal's box
+		-- ends 95 in from the right, its button starts 1 before that, so
+		-- 94 keeps the same 1px seam in the model grid too, where the box
+		-- is MountsJournal's to seat (see seatSearchBox).
 		local gridToggle, filtersToggle = journal.gridToggleButton, journal.filtersToggle
 		if gridToggle and filtersToggle then
 			gridToggle:SetSize(22, 22)
 			filtersToggle:SetSize(22, 22)
 			gridToggle:ClearAllPoints()
-			gridToggle:SetPoint("TOPLEFT", 3, -4)
+			gridToggle:SetPoint("TOPLEFT", 0, -4)
 			filtersToggle:ClearAllPoints()
 			filtersToggle:SetPoint("LEFT", gridToggle, "RIGHT", 1, 0)
+		end
+		local filtersButton = journal.filtersButton
+		if filtersButton and journal.filtersPanel then
+			filtersButton:ClearAllPoints()
+			filtersButton:SetPoint("TOPRIGHT", journal.filtersPanel, "TOPRIGHT", 0, -4)
+			filtersButton:SetSize(94, 22)
 		end
 
 		-- The search box has to be re-seated after MountsJournal, not merely at
@@ -1629,8 +2514,12 @@ local function journal_init(journal)
 			-- -4, which is the 1px step that made the box look out of line.
 			box:ClearAllPoints()
 			box:SetPoint("TOP", filtersToggle, "TOP", 0, 0)
-			box:SetPoint("LEFT", filtersToggle, "RIGHT", 4, 0)
-			box:SetPoint("RIGHT", box:GetParent(), "RIGHT", -95, 0)
+			box:SetPoint("LEFT", filtersToggle, "RIGHT", 1, 0)
+			if filtersButton then
+				box:SetPoint("RIGHT", filtersButton, "LEFT", -1, 0)
+			else
+				box:SetPoint("RIGHT", box:GetParent(), "RIGHT", -95, 0)
+			end
 		end
 		seatSearchBox()
 		hook(journal, "setScrollGridMounts", seatSearchBox)
@@ -1647,6 +2536,17 @@ local function journal_init(journal)
 
 		if journal.gridModelSettings then
 			skinSliderFrame(journal.gridModelSettings.strideSlider)
+			-- The mounts-per-row value box is 28x17 by template, which
+			-- lost some values; the same 22 height as the row's other
+			-- controls, a little wider, centred on the slider beside it
+			-- (slider: 17 tall, 2 up from the frame's bottom, in a 31 frame).
+			local edit = journal.gridModelSettings.strideSlider
+				and journal.gridModelSettings.strideSlider.edit
+			if edit then
+				edit:SetSize(34, 22)
+				edit:ClearAllPoints()
+				edit:SetPoint("RIGHT", journal.gridModelSettings.strideSlider, "RIGHT", -1, -5)
+			end
 		end
 		ddButton(journal.gridModelAnimation)
 
@@ -1674,10 +2574,21 @@ local function journal_init(journal)
 				S.FadeRegions(tab)
 				if tab.selected then
 					S.FadeRegions(tab.selected)
-					local sel = tab.selected:CreateTexture(nil, "BACKGROUND")
-					sel:SetPoint("TOPLEFT", 3, -3)
-					sel:SetPoint("BOTTOMRIGHT", -3, 3)
+					-- `selected` is a child FRAME MountsJournal shows on the
+					-- active tab, one level above the tab, so a wash drawn on
+					-- it sat over the label and dulled it. The wash goes on
+					-- the tab itself, BACKGROUND under the ARTWORK label, and
+					-- follows the child's visibility instead of living on it.
+					local selFrame = tab.selected
+					local sel = tab:CreateTexture(nil, "BACKGROUND", nil, 1)
+					sel:SetPoint("TOPLEFT", selFrame, "TOPLEFT", 3, -3)
+					sel:SetPoint("BOTTOMRIGHT", selFrame, "BOTTOMRIGHT", -3, 3)
 					addWash(sel, .2)
+					local function pull() sel:SetShown(selFrame:IsShown()) end
+					hook(selFrame, "Show", pull)
+					hook(selFrame, "Hide", pull)
+					hook(selFrame, "SetShown", pull)
+					pull()
 				end
 				tab:HookScript("OnEnter", tabOnEnter)
 				tab:HookScript("OnLeave", tabOnLeave)
@@ -1701,8 +2612,251 @@ local function journal_init(journal)
 			S.Panel(journal.shownPanel)
 			ddStyle(journal.shownPanel.resetFilter)
 		end
-		if bgFrame.leftInset then S.Inset(bgFrame.leftInset) end
-		if journal.leftInset then S.ScrollBar(journal.leftInset.scrollBar) end
+		-- The list takes the darker inset plate the Rematch skin gives its
+		-- pet lists, so the rows sit on a surface one step below the window
+		-- rather than straight on the backdrop. Blend the InsetFrameTemplate
+		-- box away first, as before.
+		--
+		-- The plate is a child frame rather than S.Panel on the inset
+		-- itself, for two reasons. MountsJournal seats the scroll bar 4px
+		-- OUTSIDE the inset's right edge (scrollBox inset 4, bar 8 to its
+		-- right), and the plate should hold the bar too, so its right edge
+		-- follows the bar's. And the plate is for the list only: the model
+		-- grid is laid out with its own margins and a scroll column that
+		-- read as a box-within-a-box once there was a plate to see them
+		-- against, so it is hidden whenever the view is not the list.
+		if bgFrame.leftInset then
+			local inset = bgFrame.leftInset
+			S.Inset(inset)
+			--[[ Line up with Rematch's pet list on the tab next door ---------
+				Measured with /mjeuiskin list on both tabs: Rematch's list
+				sits at x=21 with its bottom at 745 and its bottom bar from
+				743 down to 721; MountsJournal's column sat at x=20 with the
+				Mount button from 744 to 722. One pixel right and, for the
+				bottom row, one pixel down, and switching tabs stops
+				twitching. That means every frame in the column: the filter
+				block above (re-seated by MountsJournal on every view switch,
+				so its +1 lives in the seatList hook), the Shown strip, the
+				inset, and Mount, which is a SecureActionButton and so is
+				moved once, out of combat, with a retry on leaving it.
+				Nothing of MountsJournal's re-anchors the inset or the strip.
+			------------------------------------------------------------------]]
+			inset:SetPoint("LEFT", bgFrame, "LEFT", 5, 0)
+			inset:SetPoint("BOTTOM", bgFrame, "BOTTOM", 0, 27)
+			if journal.shownPanel then
+				journal.shownPanel:SetPoint("LEFT", bgFrame, "LEFT", 5, 0)
+			end
+			-- The right-hand panel (the model display in list view; the map
+			-- and its flags panel on the Map tab, both of which hang off it)
+			-- is seated by MountsJournal 1px right of the filter block and
+			-- with its bottom at 26. Its right edge is 4 from the window's,
+			-- so give it the same 4 from the list column, and the same
+			-- bottom as the list (27) so the two panels end level. Nothing
+			-- of MountsJournal's re-anchors it.
+			if bgFrame.rightInset and journal.filtersPanel then
+				bgFrame.rightInset:SetPoint("TOPLEFT", journal.filtersPanel, "TOPRIGHT", 4, 0)
+				bgFrame.rightInset:SetPoint("BOTTOM", bgFrame, "BOTTOM", 0, 27)
+			end
+			do
+				local summon = journal.summonButton
+				local function seatSummon()
+					if not summon then return true end
+					if InCombatLockdown and InCombatLockdown() then return false end
+					summon:SetPoint("BOTTOMLEFT", bgFrame, "BOTTOMLEFT", 5, 3)
+					return true
+				end
+				if not seatSummon() then
+					local waiter = CreateFrame("Frame")
+					waiter:RegisterEvent("PLAYER_REGEN_ENABLED")
+					waiter:SetScript("OnEvent", function(self)
+						if seatSummon() then
+							self:UnregisterAllEvents()
+							self:SetScript("OnEvent", nil)
+						end
+					end)
+				end
+			end
+
+			-- The bar first: the narrowing below reads its width.
+			local bar = inset.scrollBar
+			if bar then S.ScrollBar(bar) end
+
+			--[[ Width, and the bottom row under the list ------------------
+				MountsJournal seats the scroll bar 4px OUTSIDE the inset's
+				right edge (scrollBox inset 4, bar anchored 8 to its right),
+				so a plate that holds the bar with the same 4px margin the
+				rows have on the left ends at inset.right + 8 + barWidth. In
+				list view the inset's right is at 267 and the MountsJournal
+				checkbox, seated at x=281 by MountsJournal's secure handler on
+				every show, sits 3px past where the bottom row should end
+				(278). The bar is wider than 3px, so the plate overshot the
+				checkbox, and ending the plate at the checkbox instead put
+				the bar outside the plate (tried; it did).
+
+				So the inset is narrowed from the right by the overshoot,
+				barWidth - 3, once. That also answers the user's ask to pull
+				the list in a touch, and it is view-independent: the inset
+				keeps following the filters panel, which MountsJournal moves
+				between views, so nothing here runs per view and the model
+				grid's tile extents (computed from the scrollBox width) stay
+				consistent. MountsJournal has already laid the grid out for
+				the old width by the time this runs, so it is asked to lay
+				out again next frame, the same call it makes after a resize
+				drag, once the new width has resolved.
+			------------------------------------------------------------------]]
+			local barW = bar and bar:GetWidth() or 0
+			if issecretvalue and issecretvalue(barW) then barW = 0 end
+			barW = math.ceil(barW)
+			local narrow = math.max(0, barW - 3)
+			if narrow > 0 and journal.filtersPanel then
+				listNarrow = narrow
+				-- The filter block above the list (search row, Types /
+				-- Selected / Sources, the type bar) is 280 wide from its
+				-- template in the list and icon-grid views (in the model
+				-- grid MountsJournal anchors its RIGHT instead, which wins
+				-- over a width). The plate has to end where that block
+				-- ends, or the type bar reads as belonging to a different
+				-- column than the list it filters. So: the block gives up
+				-- the 6px the checkbox forced off the plate, and the inset
+				-- sits 8 + barWidth inside the block's right edge, which is
+				-- exactly what puts the bar's 4px margin on the block's
+				-- edge. Box width is unchanged by the pair.
+				journal.filtersPanel:SetWidth(280 - 6)
+				inset:SetPoint("RIGHT", journal.filtersPanel, "RIGHT", -(8 + barW), 0)
+
+				-- The rows: see listNarrow. The view re-sizes every row to
+				-- its template on acquire, so the shrink rides on that call;
+				-- rows already acquired get it once here, and a later
+				-- re-acquire resets to the template first, so it never
+				-- compounds. Only list rows: a model tile has modelScene,
+				-- the icon-grid button has no dragButton.
+				local function narrowRow(frame)
+					if frame and frame.dragButton and not frame.modelScene then
+						local w = frame:GetWidth()
+						if w and w > listNarrow + 60 then frame:SetWidth(w - listNarrow) end
+					end
+				end
+				if journal.view and type(journal.view.ResizeFrame) == "function" then
+					hook(journal.view, "ResizeFrame", function(_, _, frame) narrowRow(frame) end)
+					if journal.view.GetFrames then
+						for _, frame in ipairs(journal.view:GetFrames()) do narrowRow(frame) end
+					end
+				end
+				if C_Timer then
+					C_Timer.After(0, function()
+						if journal.setScrollGridMounts then journal:setScrollGridMounts(true) end
+					end)
+				end
+			end
+
+			-- The bar, centred in its channel. The channel runs from the
+			-- scroll box's right edge (the inset's less 4) to the plate's,
+			-- which is the filter block's: 4 + 8 + barWidth wide, 20 here.
+			-- MountsJournal seats the bar 8 right of the box, which put its
+			-- groove right of centre; (20 - barWidth) / 2 = 6 centres it.
+			-- Only the x changes; the 1px vertical inset is MountsJournal's.
+			if bar and journal.scrollBox then
+				-- (channel - barW) / 2 with channel = 4 + 8 + barW: the bar's
+				-- own width cancels, so 6 whatever the bar measures.
+				local x = 6
+				bar:ClearAllPoints()
+				bar:SetPoint("TOPLEFT", journal.scrollBox, "TOPRIGHT", x, 1)
+				bar:SetPoint("BOTTOMLEFT", journal.scrollBox, "BOTTOMRIGHT", x, -1)
+			end
+
+			-- The plate: the inset's top, bottom and left, and the filter
+			-- block's right, so it ends where the block ends whatever the
+			-- bar does. Same four-anchor shape the inset's own XML uses.
+			local plate = CreateFrame("Frame", nil, inset)
+			plate:EnableMouse(false)
+			plate:SetFrameLevel(inset:GetFrameLevel())
+			plate:SetPoint("TOPLEFT", inset, "TOPLEFT", 0, 0)
+			plate:SetPoint("BOTTOMLEFT", inset, "BOTTOMLEFT", 0, 0)
+			if journal.filtersPanel then
+				plate:SetPoint("RIGHT", journal.filtersPanel, "RIGHT", 0, 0)
+			else
+				plate:SetPoint("RIGHT", inset, "RIGHT", 0, 0)
+			end
+			S.Panel(plate, {inset = true})
+			journal.euiListPlate = plate
+
+			-- Mount (a SecureActionButton, 140 wide, seated BOTTOMLEFT 4,4
+			-- and never moved by us) and the profile dropdown (130 wide, 4px
+			-- to its right, seated by MountsJournal's Profiles module) ended
+			-- a few pixels short of the plate, with a gap between them. In
+			-- the list view the dropdown now fills from a 1px divide after
+			-- Mount to the plate's right edge. In the grids the checkbox
+			-- shares that row with a much wider panel, so the dropdown goes
+			-- back to MountsJournal's own seat, and the plate is hidden on
+			-- the model grid, whose tiles carry their own fill.
+			local summon, menu = journal.summonButton, bgFrame.profilesMenu
+
+			-- curGrid is 1 for the list, 2 for the icon grid, 3 for the
+			-- model grid; setScrollGridMounts writes it on every switch.
+			--[[ The model grid's first column, flush with the buttons -------
+				The scroll box sits 4px inside the inset on every side, which
+				is the list plate's margin. The model grid has no plate, so
+				its tiles started 4px right of the Mount button below them.
+				Shifting the grid would leave that 4px on the other side,
+				before the bar; instead the box's LEFT goes to the inset's
+				edge in that view only, and the tiles, sized by MountsJournal
+				as floor(boxWidth / n), absorb the width.
+
+				They are sized inside setScrollGridMounts, from the box as
+				it is at that moment, so the box has to be re-seated BEFORE
+				that read, not from the post-hook after it (a second layout a
+				frame later fixed the size but showed as a hitch on every
+				switch). setScrollGridMounts opens by asking getGridToggle
+				which view is coming; a post-hook on that runs between the
+				answer and the width read, and asks the same question itself
+				(re-entrancy guarded) to learn the answer.
+			------------------------------------------------------------------]]
+			local function seatBox(self, grid)
+				local box = self.scrollBox
+				local wantLeft = (grid == 3) and 0 or 4
+				if box and self.euiBoxLeft ~= wantLeft then
+					self.euiBoxLeft = wantLeft
+					box:SetPoint("TOPLEFT", inset, "TOPLEFT", wantLeft, -4)
+				end
+			end
+			local asking = false
+			hook(journal, "getGridToggle", function(self)
+				if asking then return end
+				asking = true
+				local ok, grid = pcall(self.getGridToggle, self)
+				asking = false
+				if ok then seatBox(self, grid) end
+			end)
+
+			local function seatList(self)
+				local list = self.curGrid == nil or self.curGrid == 1
+				plate:SetShown(self.curGrid ~= 3)
+				seatBox(self, self.curGrid)
+				-- The filter block: MountsJournal has just seated it at x=4
+				-- (or 1px left of the nav bar, which is at 5). One pixel
+				-- right, keeping its own y and its RIGHT anchor.
+				local fp = self.filtersPanel
+				if fp and fp.GetPoint then
+					local okP, point, rel, relPoint, x, y = pcall(fp.GetPoint, fp, 1)
+					if okP and point == "TOPLEFT" and type(x) == "number" then
+						fp:SetPoint("TOPLEFT", rel or bgFrame, relPoint or "TOPLEFT", x + 1, y or 0)
+					end
+				end
+				if menu and summon then
+					menu:ClearAllPoints()
+					if list then
+						menu:SetPoint("TOPLEFT", summon, "TOPRIGHT", 1, 0)
+						-- Plate bottom 27, button bottoms 3.
+						menu:SetPoint("BOTTOMRIGHT", plate, "BOTTOMRIGHT", 0, -24)
+					else
+						menu:SetSize(130, 22)
+						menu:SetPoint("LEFT", summon, "RIGHT", 4, -.5)
+					end
+				end
+			end
+			hook(journal, "setScrollGridMounts", seatList)
+			seatList(journal)
+		end
 		if journal.scrollBox then
 			hook(journal.scrollBox, "Update", scrollMountButtons)
 			scrollMountButtons(journal.scrollBox)
@@ -1802,8 +2956,13 @@ local function journal_init(journal)
 				mapSettings.existingListsToggle:SetPoint("TOP", control, "TOP", 0, -3)
 				mapSettings.existingListsToggle:SetPoint("RIGHT", mapSettings, "RIGHT", 0, 0)
 
+				-- The split between the two dropdowns. MountsJournal's 134
+				-- truncated "Dungeons and Raids" to "Dungeons and R..." while
+				-- "Current Location" had most of the row to itself; 170
+				-- fits the longer label with margin and leaves the other
+				-- plenty at the window's minimum width (the panel is ~440).
 				mapSettings.CurrentMap:ClearAllPoints()
-				mapSettings.CurrentMap:SetPoint("LEFT", control, "LEFT", 134, -1)
+				mapSettings.CurrentMap:SetPoint("LEFT", control, "LEFT", 170, -1)
 				mapSettings.CurrentMap:SetPoint("RIGHT",
 					mapSettings.existingListsToggle, "LEFT", -1, 0)
 
@@ -1831,6 +2990,7 @@ local function journal_init(journal)
 		end
 
 		flatButton(journal.summonButton)
+		pinButtonFonts(journal.summonButton)
 		ddStretchButton(bgFrame.profilesMenu)
 		flatButton(journal.mountSpecial)
 
@@ -1847,9 +3007,11 @@ local function journal_init(journal)
 	end)
 
 	--[[ TABS ------------------------------------------------------------------
-		The tabs are deliberately NOT skinned, and this is the one place the
-		addon is better off doing nothing. It took measuring both rows to see
-		why.
+		The Model/Map/Settings row follows whichever look the Collections
+		row beside it wears (see THE MODEL / MAP / SETTINGS ROW above). Where
+		that row is stock, ours are deliberately NOT skinned, and this is the
+		one place the addon is better off doing nothing. It took measuring
+		both rows to see why.
 
 		/mjeuiskin tabs put them side by side:
 
@@ -1863,17 +3025,20 @@ local function journal_init(journal)
 		opaque plate over art that was already correct, plus a mirrored label
 		and an accent underline.
 
-		And the row we are meant to match is stock. EllesmereUI shells the
-		Collections window but does not skin its tabs on this client, each one
-		carries a single gold FontString, where a skinned tab would carry two.
-		So every step of skinning ours moved them further from their neighbours,
-		which is exactly how it looked: repainting them to match a house style
-		that is not on screen anywhere near this window.
+		And on that client the row we were meant to match was stock as far
+		as EllesmereUI is concerned: it shells the Collections window but
+		does not skin its tabs, each one carries a single gold FontString,
+		where an engine-skinned tab would carry two. So every step of
+		skinning ours moved them further from their neighbours, which is
+		exactly how it looked: repainting them to match a house style that
+		was not on screen anywhere near this window.
 
-		Leaving them alone makes them identical to the row beside them, because
-		they are the same widget underneath. If EllesmereUI ever does skin
-		Collections' tabs, this is the line to revisit, S.Tab is still in the
-		facade, and one call per tab brings the house style back.
+		Leaving them alone makes them identical to the row beside them,
+		because they are the same widget underneath. What that reading
+		missed, found later through the Rematch skin, is that the row WAS
+		being dressed, just not by EllesmereUI: atrocityEssentials was. So
+		"match the row beside us" now means "wear whatever it wears", and
+		the stock case is one of the three answers rather than the only one.
 	--------------------------------------------------------------------------]]
 	stage("journal:tabs", function()
 		-- MJOptionBackgroundTemplate, which is an InsetFrameTemplate: the panel
@@ -1969,19 +3134,65 @@ local function journal_init(journal)
 			repaintTabs()
 		end
 
-		-- The Model/Map/Settings row is deliberately NOT touched: not its art,
-		-- not its position, not its labels.
-		-- 
-		-- Two attempts to improve it both made it worse than doing nothing. It
-		-- was flattened to match Collections' row, on the evidence that their
-		-- atlas regions were cleared and ours were not; that lost the native
-		-- selected-tab growth, since the growth IS the taller activetab atlas, and
-		-- left a flat plate that reads nothing like the row beside it. Seating it
-		-- flush removed a 2px overlap that the native art is drawn to have.
-		-- 
-		-- Untouched, these are the same Blizzard template as Collections' tabs
-		-- and they behave identically, growth included. That is the bar to beat,
-		-- and nothing tried so far has beaten it.
+		-- The Model/Map/Settings row: dressed to match whatever Collections'
+		-- row wears, and where that row is stock, NOT touched at all: not its
+		-- art, not its position, not its labels.
+		--
+		-- Two attempts to improve the stock case both made it worse than
+		-- doing nothing. It was flattened to match Collections' row, on the
+		-- evidence that their atlas regions were cleared and ours were not;
+		-- that lost the native selected-tab growth, since the growth IS the
+		-- taller activetab atlas, and left a flat plate that reads nothing
+		-- like the row beside it. Seating it flush removed a 2px overlap that
+		-- the native art is drawn to have.
+		--
+		-- Untouched, these are the same Blizzard template as Collections'
+		-- tabs and they behave identically, growth included. That is the bar
+		-- to beat for the stock case, and nothing tried so far has beaten it.
+		-- The other two cases are the row beside us having already changed.
+		dressBottomTabs(bgFrame)
+
+		--[[ The window opens at its saved width, not a few pixels wider ---
+			MountsJournal sizes the window at init as Clamp(saved, min,
+			max), with min from getMinMaxSize, which reads the tab rows as
+			they are at that moment: ours still 72 wide and at MountsJournal's
+			own seat. So a saved width below that stale minimum opened wider
+			than it should, and wider than the drag minimum once the skin had
+			seated the tabs (reported: "reload lands wider than dragging to
+			the minimum"). Once the window has laid out, re-do the clamp with
+			the rows as they now are, then tell MountsJournal exactly what it
+			tells itself after a resize drag. Once per session; from then on
+			the bounds MountsJournal sets at drag start are live.
+		--------------------------------------------------------------------]]
+		local function reclampWidth()
+			if journal.euiReclamped then return end
+			local mj = _G.MountsJournal
+			local cfg = mj and mj.config
+			if not (cfg and journal.getMinMaxSize and bgFrame:IsVisible()) then return end
+			if InCombatLockdown and InCombatLockdown() then return end
+			local ok, minW, _, maxW = pcall(journal.getMinMaxSize, journal)
+			if not (ok and minW and maxW) then return end
+			journal.euiReclamped = true
+			local w, h = bgFrame:GetSize()
+			local want = Clamp(cfg.journalWidth or minW, minW, maxW)
+			-- MountsJournal saves the width only when a resize drag stops,
+			-- and a drag to the minimum saves whatever the minimum was at
+			-- the time. Before this skin sized the tabs that was 706 (or 714
+			-- with the tabs at MountsJournal's own seat), so a saved width
+			-- sitting a few pixels above today's minimum is yesterday's
+			-- minimum, not a choice: snap it to the minimum. The saved value
+			-- is left alone; the next drag to the minimum rewrites it.
+			if want > minW and want - minW <= 12 then want = minW end
+			if w and h and math.abs(want - w) >= .5 then
+				bgFrame:SetSize(want, h)
+				if journal.setScrollGridMounts then journal:setScrollGridMounts(true) end
+				if journal.event then pcall(journal.event, journal, "JOURNAL_RESIZED") end
+			end
+		end
+		bgFrame:HookScript("OnShow", function()
+			if C_Timer then C_Timer.After(0, reclampWidth) else reclampWidth() end
+		end)
+		if bgFrame:IsVisible() and C_Timer then C_Timer.After(0, reclampWidth) end
 	end)
 
 end

@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.1.0
+
+A polish release. Almost everything here is about the journal sitting
+pixel-for-pixel alongside the other Collections tabs.
+
+**New**
+
+- **Right-click the resize grip** to snap the window back to its smallest
+  size. It's remembered, just like dragging it there.
+- **If you run atrocityUI, the Model, Map and Settings tabs now match the
+  Collections tabs beside them:** same dark plate, font, hover and selected
+  tint, picked up from the row next door. Without atrocityUI nothing changes,
+  because the two rows already matched.
+
+**Fixed**
+
+- **The Collections tab labels no longer drop a pixel when you open the Mounts
+  tab** and climb back when you leave it.
+- **The window can be made exactly as narrow as the other Collections tabs.**
+  Before, it stopped a few pixels short, and after a reload it opened a little
+  wider than you had left it.
+- **Resizing the window and reloading no longer scatters the tab buttons.**
+- **The favourite star sits on top of the icon's edge again,** on mounts and on
+  pets.
+- **The Mount button's label no longer changes size when you hover it.**
+- **The active filter tab's label stays crisp** instead of being tinted along
+  with its background.
+- **"Dungeons and Raids" under the map is no longer cut short.**
+- **The mounts-per-row box in the model grid always shows its number.**
+
+**Looks**
+
+- **The mount list sits on a darker plate,** scroll bar and all, with a faint
+  highlight under the cursor, matching the pet list the Rematch skin draws. The
+  icon grid gets the same plate.
+- **Grid tiles are square.** Blizzard's rounded border no longer shows inside
+  the skin's edge.
+- **Everything in the left column lines up:** the filter row, the type bar, the
+  list and the Mount and profile buttons share the same left and right edges,
+  and the scroll bar sits centred in its channel. If you also use the Rematch
+  skin, switching between Mounts and Pet Journal no longer twitches by a pixel.
+- **The panel on the right lines up with the list,** both in list view and on
+  the Map tab, and the model grid's first column starts where the Mount button
+  does.
+
+**For bug reports**
+
+- `/mjeuiskin tabs` now prints exact positions and fonts for both tab rows, and
+  `/mjeuiskin list` and `/mjeuiskin pet` do the same for the list column and
+  the pet button.
+
 ## 1.0.10
 
 - **Fixed: an error while scrolling the mount grid, and when the pet selection

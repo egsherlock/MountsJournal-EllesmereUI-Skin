@@ -53,13 +53,17 @@ These get re-read every time something is painted, never cached. Switch profile,
 
 **Blizzard's Collections and MountJournal frames**, in one specific way: their chrome is faded while the journal is open and put back when it closes, so it can't show through a transparent backdrop. The Collections tab row underneath is left alone.
 
+**The Model/Map/Settings tabs** follow whatever the Collections tabs beside them wear. If atrocityUI (atrocityEssentials) is skinning that row, ours take the same flat plate, hover, font and selected tint, read live from the row beside them. If EllesmereUI's own Blizzard skin is dressing it, ours get the same treatment. If it's stock Blizzard, ours are left alone, since they're the same widget and already match.
+
 Cost is a one-off pass at login plus hooks. There's no OnUpdate, no polling and no per-frame work.
 
 ## If something looks wrong
 
 `/mjeuiskin` tells you what actually ran: which backend is live, the versions installed, the colours and border it resolved, and any stage that failed. Each section is isolated, so if a frame moves in a MountsJournal update you lose that section rather than the whole window.
 
-`/mjeuiskin behind` lists anything still drawing behind the window, and `/mjeuiskin tabs` compares the tab rows. Both print what the frames really carry, which is usually the fastest way to tell a bug here apart from a Blizzard or EllesmereUI change.
+`/mjeuiskin behind` lists anything still drawing behind the window, and `/mjeuiskin tabs` compares the tab rows: where each tab and its label sit, the label's font, and the art. Both print what the frames really carry, which is usually the fastest way to tell a bug here apart from a Blizzard, EllesmereUI or MountsJournal change. If something looks like it moved, run `tabs` before and after and compare. `/mjeuiskin list` and `/mjeuiskin pet` do the same for the list column and the pet button.
+
+Right-clicking the resize grip snaps the window back to its smallest size, which is the same size as the other Collections tabs.
 
 ## Compatibility
 

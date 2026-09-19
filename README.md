@@ -73,8 +73,12 @@ right behind it, and without this they'd show through a transparent backdrop.
 Only regions are touched, never frames, and only the parts that actually overlap
 our window. The Collections tab row underneath is left alone.
 
-The Model/Map/Settings row is flattened so it matches the Collections tabs next
-to it, which EllesmereUI already strips as part of skinning that window.
+The Model/Map/Settings row follows whatever the Collections tabs next to it
+wear. If atrocityUI (atrocityEssentials) is skinning that row, ours take the
+same flat plate, hover, font and selected tint, read live from the row beside
+them. If EllesmereUI's own Blizzard skin is dressing it, ours get the same
+treatment. If it's stock Blizzard, ours are left completely alone, since they're
+the same widget and already match.
 
 Cost is a one off pass at login plus hooks. There's no `OnUpdate`, no polling and
 no per frame work, and the internal registries use weak keys so recycled rows can
@@ -89,9 +93,15 @@ section rather than the whole window.
 
 There are two more focused commands. `/mjeuiskin behind` lists anything still
 drawing behind the window, biggest first. `/mjeuiskin tabs` compares our tab
-labels and art against the Collections row beside them. Both print what the
-frames really carry, texture, size, colour and alpha, which is usually the
-fastest way to tell a bug here apart from a Blizzard or EllesmereUI change.
+row against the Collections row beside it: where each tab and its label sit,
+the label's font and colour, and the visible art. Both print what the frames
+really carry, which is usually the fastest way to tell a bug here apart from a
+Blizzard, EllesmereUI or MountsJournal change. If something looks like it
+moved, run `tabs` before and after and compare the two. `/mjeuiskin list` and
+`/mjeuiskin pet` do the same for the list column and the pet button.
+
+Right-clicking the resize grip snaps the window back to its smallest size,
+which is the same size as the other Collections tabs.
 
 ## Compatibility
 
