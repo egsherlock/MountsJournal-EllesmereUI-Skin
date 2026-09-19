@@ -5,10 +5,11 @@
 **Fixed**
 
 - **Opening the Mounts tab during combat no longer produces a "blocked action"
-  error.** The Model, Map and Settings tabs are protected by the game while
+  error.** The game locks the size of the Model, Map and Settings tabs while
   you fight, and the skin was fitting them to their labels the moment the
-  window appeared. It now waits until combat ends and fits them then, so
-  BugSack stays quiet and the tabs still come up sized right.
+  window appeared. The labels still get their font and colours straight
+  away; only the fit waits, and the tabs snap to their proper width the
+  moment combat ends.
 
 ## 1.1.1
 

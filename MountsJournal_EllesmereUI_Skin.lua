@@ -2045,24 +2045,25 @@ local function paintBottomTab(tab, selected)
 	if d.style == "blizzard" then return end
 	if selected == nil then selected = isSelectedTab(tab) end
 
-	-- The tab is protected and the paint ends in a resize; in combat the
-	-- client blocks that write (ADDON_ACTION_BLOCKED, not a Lua error, so
-	-- the pcall below never saw it). Paint once combat ends instead.
-	if not canWrite(tab) then
-		if not d.repaintPending then
-			d.repaintPending = true
-			afterCombat(function()
-				d.repaintPending = nil
-				if not tab:IsForbidden() then paintBottomTab(tab) end
-			end)
-		end
-		return
+	-- The tab is protected, so in combat the client refuses its size and
+	-- anchor writes (ADDON_ACTION_BLOCKED: not a Lua error, so a pcall
+	-- never sees it). Fonts, label anchors and colours are region writes
+	-- and go through regardless, so the label is drawn right at once and
+	-- only the fit waits for the fight to end. One queued repaint per tab.
+	local function fitLater()
+		if d.repaintPending then return end
+		d.repaintPending = true
+		afterCombat(function()
+			d.repaintPending = nil
+			if not tab:IsForbidden() then paintBottomTab(tab) end
+		end)
 	end
 
 	if d.style == "eui" then
 		-- The engine's primitive re-reads selection itself and is guarded,
-		-- so a repeat call is its own repaint.
-		S.Tab(tab)
+		-- so a repeat call is its own repaint. Whether it sizes the tab is
+		-- the engine's business, so in combat the whole call waits.
+		if canWrite(tab) then S.Tab(tab) else fitLater() end
 		return
 	end
 
@@ -2102,7 +2103,11 @@ local function paintBottomTab(tab, selected)
 	-- only caught up on the next repaint: a width that changed a beat
 	-- after every click. The fit must measure the font the label is about
 	-- to be drawn in.
-	if PanelTemplates_TabResize then pcall(PanelTemplates_TabResize, tab, 0, nil, 1) end
+	if not canWrite(tab) then
+		fitLater()
+	elseif PanelTemplates_TabResize then
+		pcall(PanelTemplates_TabResize, tab, 0, nil, 1)
+	end
 	local br, bg, bb = aeBrand()
 	d.sel:SetColorTexture(br, bg, bb, AE_SELECTED_A)
 	d.sel:SetShown(selected and true or false)
