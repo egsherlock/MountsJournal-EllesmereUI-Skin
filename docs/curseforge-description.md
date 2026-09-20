@@ -15,19 +15,19 @@ The whole idea is that it follows **your** EllesmereUI setup rather than imposin
 
 ![Mount list](https://raw.githubusercontent.com/egsherlock/MountsJournal-EllesmereUI-Skin/main/docs/mounts.png)
 
-*The journal picking up a Dark Mode profile, colour and transparency both.*
+*The mount list and model, wearing the active profile's colour, accent, font and border.*
 
 ![Grid view](https://raw.githubusercontent.com/egsherlock/MountsJournal-EllesmereUI-Skin/main/docs/grid.png)
 
 *Grid view, with the mounts per row slider.*
 
+![Map tab](https://raw.githubusercontent.com/egsherlock/MountsJournal-EllesmereUI-Skin/main/docs/map.png)
+
+*The Map tab, with its zone flags underneath.*
+
 ![Settings](https://raw.githubusercontent.com/egsherlock/MountsJournal-EllesmereUI-Skin/main/docs/settings.png)
 
 *MountsJournal's own settings, skinned to match.*
-
-![Class settings](https://raw.githubusercontent.com/egsherlock/MountsJournal-EllesmereUI-Skin/main/docs/class-settings.png)
-
-*Class settings, with the class list and macro editors.*
 
 ## What it takes from EllesmereUI
 

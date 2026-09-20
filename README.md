@@ -31,9 +31,9 @@ and the journal changes with it.
 | | |
 |---|---|
 | ![Mount list](docs/mounts.png) | ![Grid view](docs/grid.png) |
-| The journal picking up a Dark Mode profile, colour and transparency both | Grid view, with the mounts per row slider |
-| ![Settings](docs/settings.png) | ![Class settings](docs/class-settings.png) |
-| MountsJournal's own settings, skinned to match | Class settings, with the class list and macro editors |
+| The mount list and model, wearing the active profile's colour, accent, font and border | Grid view, with the mounts per row slider |
+| ![Map tab](docs/map.png) | ![Settings](docs/settings.png) |
+| The Map tab, with its zone flags underneath | MountsJournal's own settings, skinned to match |
 
 ## Installing
 
