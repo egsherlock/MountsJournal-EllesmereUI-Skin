@@ -1,6 +1,6 @@
 # MountsJournal EllesmereUI Skin
 
-Reskins [MountsJournal](https://www.curseforge.com/wow/addons/mounts-journal) to match [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI).
+Reskins [MountsJournal](https://www.curseforge.com/wow/addons/mounts-journal) to match [EllesmereUI](https://www.curseforge.com/wow/addons/ellesmereui).
 
 You need both addons installed. This one contains no part of either, and if you're not running both it quietly does nothing.
 
@@ -76,6 +76,6 @@ Works on EllesmereUI 8.6.6 and newer. On 8.6.8+ with the Blizz UI Enhanced modul
 
 ## Licence
 
-GPLv3. This is a derivative work of [MountsJournal_ElvUI_Skin](https://github.com/sfmict/MountsJournal-ElvUI-Skin) by sfmict. The map of which frames need skinning came from there; the EllesmereUI implementation is new. Thanks to sfmict, who wrote both MountsJournal and the ElvUI skin this was translated from, and to EllesmereGaming for EllesmereUI.
+GPLv3. This is a derivative work of [MountsJournal ElvUI Skin](https://www.curseforge.com/wow/addons/mountsjournal-elvui-skin) by sfmict. The map of which frames need skinning came from there; the EllesmereUI implementation is new. Thanks to sfmict, who wrote both MountsJournal and the ElvUI skin this was translated from, and to EllesmereGaming for EllesmereUI.
 
 Unofficial, and not affiliated with either project. Source and issues: [GitHub](https://github.com/egsherlock/MountsJournal-EllesmereUI-Skin).
