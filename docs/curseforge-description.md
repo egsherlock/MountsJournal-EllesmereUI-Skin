@@ -6,16 +6,11 @@ You need both addons installed. This one contains no part of either, and if you'
 
 The whole idea is that it follows **your** EllesmereUI setup rather than imposing a look of its own. Window colour, transparency, accent, font and border all come from your active profile, read fresh each time. Change something in EllesmereUI and the journal changes with it.
 
-## Goes well with
-
-- **[Rematch EllesmereUI Skin](https://www.curseforge.com/projects/1702206)** does the same for Rematch's pet journal, built on the same foundation as this one, so the two Collections tabs match each other as well as the rest of your UI.
-- **[Postbox](https://www.curseforge.com/projects/1639171)** is a full mailbox replacement: clear a full inbox in one click or just the mail you choose, complete recipients as you type, and see what is waiting without visiting a mailbox. It wears your EllesmereUI or ElvUI look.
-
 ## Screenshots
 
 ![Mount list](https://raw.githubusercontent.com/egsherlock/MountsJournal-EllesmereUI-Skin/main/docs/mounts.png)
 
-*The mount list and model, wearing the active profile's colour, accent, font and border.*
+*The mount list and model on a Dark Mode profile, colour and transparency both from it.*
 
 ![Grid view](https://raw.githubusercontent.com/egsherlock/MountsJournal-EllesmereUI-Skin/main/docs/grid.png)
 
@@ -28,6 +23,11 @@ The whole idea is that it follows **your** EllesmereUI setup rather than imposin
 ![Settings](https://raw.githubusercontent.com/egsherlock/MountsJournal-EllesmereUI-Skin/main/docs/settings.png)
 
 *MountsJournal's own settings, skinned to match.*
+
+## Goes well with
+
+- **[Rematch EllesmereUI Skin](https://www.curseforge.com/projects/1702206)** is this same skin for Rematch, the pet journal one tab over, built on the same foundation so the two Collections tabs match each other as well as the rest of your UI.
+- Or try my other addon, **[Postbox](https://www.curseforge.com/projects/1639171)**, a full mailbox replacement: clear a full inbox in one click or just the mail you choose, complete recipients as you type, and see what is waiting without visiting a mailbox. It wears your EllesmereUI or ElvUI look.
 
 ## What it takes from EllesmereUI
 

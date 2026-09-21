@@ -15,25 +15,25 @@ look of its own. Window colour, transparency, accent, font and border all come
 from your active profile, read fresh each time. Change something in EllesmereUI
 and the journal changes with it.
 
-## Goes well with
-
-- **[Rematch EllesmereUI Skin](https://github.com/egsherlock/Rematch-EllesmereUI-Skin)**
-  does the same for Rematch's pet journal, built on the same foundation as
-  this one, so the two Collections tabs match each other as well as the rest
-  of your UI.
-- **[Postbox](https://github.com/egsherlock/Postbox)** is a full mailbox
-  replacement: clear a full inbox in one click or just the mail you choose,
-  complete recipients as you type, and see what is waiting without visiting a
-  mailbox. It wears your EllesmereUI or ElvUI look.
-
 ## Screenshots
 
 | | |
 |---|---|
 | ![Mount list](docs/mounts.png) | ![Grid view](docs/grid.png) |
-| The mount list and model, wearing the active profile's colour, accent, font and border | Grid view, with the mounts per row slider |
+| The mount list and model on a Dark Mode profile, colour and transparency both from it | Grid view, with the mounts per row slider |
 | ![Map tab](docs/map.png) | ![Settings](docs/settings.png) |
 | The Map tab, with its zone flags underneath | MountsJournal's own settings, skinned to match |
+
+## Goes well with
+
+- **[Rematch EllesmereUI Skin](https://github.com/egsherlock/Rematch-EllesmereUI-Skin)**
+  is this same skin for Rematch, the pet journal one tab over, built on the
+  same foundation so the two Collections tabs match each other as well as
+  the rest of your UI.
+- Or try my other addon, **[Postbox](https://github.com/egsherlock/Postbox)**,
+  a full mailbox replacement: clear a full inbox in one click or just the
+  mail you choose, complete recipients as you type, and see what is waiting
+  without visiting a mailbox. It wears your EllesmereUI or ElvUI look.
 
 ## Installing
 
@@ -131,7 +131,7 @@ EllesmereUI does export. You don't need to do anything either way, and
 ## Licence
 
 GPLv3. This is a derivative work of
-[MountsJournal_ElvUI_Skin](https://github.com/sfmict/MountsJournal-ElvUI-Skin) by
+[MountsJournal ElvUI Skin](https://www.curseforge.com/wow/addons/mountsjournal-elvui-skin) by
 sfmict. The map of which frames need skinning came from there; the EllesmereUI
 implementation is new. Thanks to sfmict, who wrote both MountsJournal and the
 ElvUI skin this was translated from, and to EllesmereGaming for EllesmereUI.
