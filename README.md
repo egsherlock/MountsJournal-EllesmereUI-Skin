@@ -17,12 +17,24 @@ and the journal changes with it.
 
 ## Screenshots
 
-| | |
-|---|---|
-| ![Mount list](docs/mounts.png) | ![Grid view](docs/grid.png) |
-| The mount list and model on a Dark Mode profile, colour and transparency both from it | Grid view, with the mounts per row slider |
-| ![Map tab](docs/map.png) | ![Settings](docs/settings.png) |
-| The Map tab, with its zone flags underneath | MountsJournal's own settings, skinned to match |
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/mounts.png" alt="Mount list"></td>
+    <td width="50%" valign="top"><img src="docs/grid.png" alt="Grid view"></td>
+  </tr>
+  <tr>
+    <td valign="top">The mount list and model on a Dark Mode profile, colour and transparency both from it</td>
+    <td valign="top">Grid view, with the mounts per row slider</td>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/map.png" alt="Map tab"></td>
+    <td valign="top"><img src="docs/settings.png" alt="Settings"></td>
+  </tr>
+  <tr>
+    <td valign="top">The Map tab, with its zone flags underneath</td>
+    <td valign="top">MountsJournal's own settings, skinned to match</td>
+  </tr>
+</table>
 
 ## Goes well with
 
