@@ -14,8 +14,8 @@
 ## Category-ruRU: Коллекции отряда
 ## Category-zhCN: 战团藏品
 ## Category-zhTW: 戰隊收藏
-## Dependencies: MountsJournal, EllesmereUI
-## OptionalDeps: EllesmereUIBlizzardSkin
+## Dependencies: MountsJournal
+## OptionalDeps: EllesmereUI, EllesmereUIBlizzardSkin
 ## SavedVariables: MountsJournalEllesmereUISkinDB
 
 ## X-Website: https://github.com/egsherlock/MountsJournal-EllesmereUI-Skin
@@ -27,5 +27,10 @@
 # release workflow. Wago stays commented until that project exists.
 ## X-Curse-Project-ID: 1633540
 # ## X-Wago-ID: 000000
+
+# EllesmereUI is optional here only because its standalone modules (one
+# EUIStandalone<Module> folder each) have no "EllesmereUI" addon to name.
+# Listing it keeps the suite loading before us exactly as before; Backend.lua
+# finds whichever EllesmereUI is running at login, suite first.
 Backend.lua
 MountsJournal_EllesmereUI_Skin.lua

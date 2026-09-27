@@ -37,7 +37,10 @@ local hooksecurefunc, CreateFrame, LibStub = hooksecurefunc, CreateFrame, LibStu
 -- user, the API is on EllesmereUI's master but not in any tagged release, so
 -- gating on it meant going permanently inert on 8.6.6. Backend.lua now supplies
 -- the facade either way. See its header.
-local haveEUI = EllesmereUI ~= nil
+--
+-- Nor is EllesmereUI itself, at load: the suite or any one standalone module
+-- will do, so Backend.lua finds it at PLAYER_LOGIN (ns.Host()) and simply
+-- never calls us back if there is none. See its WHICH ELLESMEREUI.
 local haveMJ  = MountsJournal ~= nil
 
 -- EllesmereUI's skin facade, captured when our callback fires. MountsJournal
@@ -637,14 +640,20 @@ SlashCmdList.MJEUISKIN = function(msg)
 				local ok, v = pcall(getMeta, name, "Version")
 				return (ok and v) or "?"
 			end
-			print(("  versions: skin %s, MountsJournal %s, EllesmereUI %s"):format(
-				ver(ADDON_NAME), ver("MountsJournal"), ver("EllesmereUI")))
+			-- A standalone module carries its own copy of EllesmereUI, so name
+			-- the folder: that is the version its framework is.
+			local host = ns.HostFolder() or "EllesmereUI"
+			print(("  versions: skin %s, MountsJournal %s, EllesmereUI %s%s"):format(
+				ver(ADDON_NAME), ver("MountsJournal"), ver(host),
+				ns.HostIsStandalone() and (" (standalone: " .. host .. ")") or ""))
 		end
 	end
 
+	local haveEUI = ns.Host() ~= nil
 	if not (haveEUI and haveMJ) then
-		print("  |cffff5555Addon is inert. A precondition was missing at load.|r")
-		print("  EllesmereUI loaded:", yn(haveEUI))
+		print("  |cffff5555Addon is inert. A precondition was missing.|r")
+		print("  EllesmereUI running:", yn(haveEUI),
+			haveEUI and "" or "(neither the suite nor a standalone module)")
 		print("  MountsJournal loaded:", yn(haveMJ))
 		return
 	end
@@ -652,6 +661,8 @@ SlashCmdList.MJEUISKIN = function(msg)
 	local backendNote
 	if ns.GetBackend() == "api" then
 		backendNote = "(EllesmereUI's skinning API; shell, scroll bars and checkboxes drawn locally)"
+	elseif ns.HostIsStandalone() then
+		backendNote = "(standalone EllesmereUI, which has no Blizz UI Enhanced; using public helpers)"
 	elseif ns.HasAPI() then
 		-- The stub exists but nothing will ever fire it: the parent ships
 		-- RegisterSkin as a documented no-op when the child addon is off.
@@ -720,11 +731,12 @@ end
 
 
 
--- Registering a skin is free, so this is the only gate we need. Hard TOC
--- dependencies cover the case where either addon is absent; the checks keep us
--- inert regardless, but the diagnostic above is already registered, so an
--- inert addon can still say so.
-if not (haveEUI and haveMJ) then return end
+-- Registering a skin is free, so this is the only gate we need. MountsJournal
+-- is a hard TOC dependency. EllesmereUI is not, because a standalone module has
+-- no "EllesmereUI" addon to depend on: without one, Backend.lua never calls the
+-- callback below, which is gate enough. The diagnostic above is already
+-- registered either way, so an inert addon can still say so.
+if not haveMJ then return end
 
 
 local function resolveDB()
@@ -785,10 +797,12 @@ local borderHosts = setmetatable({}, {__mode = "k"})
 	Read-only, and re-read on every call, so changing it in EllesmereUI's own
 	options and reopening the journal is enough, there is nothing to import.
 	Note size 0 is a real answer, not a missing one: plenty of setups run with
-	no window border, and honouring that is the whole point.
+	no window border, and honouring that is the whole point. A standalone
+	module's settings table (ns.HostDB) never carries these keys, so there
+	"auto" reads as no border, which is what that host draws on its windows.
 ------------------------------------------------------------------------------]]
 function hostBorder()
-	local edb = EllesmereUIDB
+	local edb = ns.HostDB()
 	if type(edb) ~= "table" then return "none", 2 end
 	local size = tonumber(edb.windowBorderSize)
 	local tex = edb.windowBorderTexture
@@ -815,24 +829,25 @@ local function applyBorder(frame)
 		borderHosts[frame] = host
 	end
 
-	if not EllesmereUI.ApplyBorderStyle then return end
+	local EUI = ns.Host()
+	if not (EUI and EUI.ApplyBorderStyle) then return end
 
 	local key, size = resolveBorder()
 	if not key or key == "none" then
 		-- Size 0 tears down whichever implementation (solid or textured) is
 		-- currently live on the host.
-		EllesmereUI.ApplyBorderStyle(host, 0, 0, 0, 0, 1, "solid")
+		EUI.ApplyBorderStyle(host, 0, 0, 0, 0, 1, "solid")
 		host:Hide()
 		return
 	end
 
-	local colour, behind = EllesmereUI.GetBorderStyleSelectDefaults(key)
+	local colour, behind = EUI.GetBorderStyleSelectDefaults(key)
 	local level = frame:GetFrameLevel()
 	-- Shadow only reads as depth when it sits *under* the window it hugs;
 	-- everything else goes above EllesmereUI's own window border overlay.
 	host:SetFrameLevel(behind and (level > 0 and level - 1 or 0) or level + 7)
 	host:Show()
-	EllesmereUI.ApplyBorderStyle(host, size, colour.r, colour.g, colour.b, 1, key)
+	EUI.ApplyBorderStyle(host, size, colour.r, colour.g, colour.b, 1, key)
 end
 
 
@@ -4176,8 +4191,9 @@ local function buildOptions()
 		container:Add("auto", "Follow EllesmereUI",
 			"Use the window border set in EllesmereUI's own options, including its size.")
 		container:Add("none", "None")
-		if EllesmereUI.GetBorderTextureList then
-			for _, entry in ipairs(EllesmereUI.GetBorderTextureList()) do
+		local EUI = ns.Host()
+		if EUI and EUI.GetBorderTextureList then
+			for _, entry in ipairs(EUI.GetBorderTextureList()) do
 				container:Add(entry.key, entry.name)
 			end
 		end

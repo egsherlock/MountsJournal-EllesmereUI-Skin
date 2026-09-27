@@ -2,7 +2,7 @@
 
 Reskins [MountsJournal](https://www.curseforge.com/wow/addons/mounts-journal) to match [EllesmereUI](https://www.curseforge.com/wow/addons/ellesmereui).
 
-You need both addons installed. This one contains no part of either, and if you're not running both it quietly does nothing.
+You need MountsJournal, and EllesmereUI: either the full suite or any one of its standalone addons, such as [Standalone Raid & Party Frames](https://www.curseforge.com/wow/addons/eui-raid-frames). This addon contains no part of either, and if you're not running both it quietly does nothing.
 
 The whole idea is that it follows **your** EllesmereUI setup rather than imposing a look of its own. Window colour, transparency, accent, font and border all come from your active profile, read fresh each time. Change something in EllesmereUI and the journal changes with it.
 
@@ -41,6 +41,8 @@ Nothing is hardcoded, and no profile gets special treatment. Imports like atroci
 
 These get re-read every time something is painted, never cached. Switch profile, reopen the journal, done. There's nothing to import or keep in sync.
 
+On a standalone addon these come from that addon's own copy of EllesmereUI. It has no window border or window style settings, so there "Follow EllesmereUI" means no border, and the window style is the default one.
+
 ## Options
 
 **Game Menu > Options > AddOns > MountsJournal EllesmereUI Skin**
@@ -73,6 +75,8 @@ Right-clicking the resize grip snaps the window back to its smallest size, which
 ## Compatibility
 
 Works on EllesmereUI 8.6.6 and newer. On 8.6.8+ with the Blizz UI Enhanced module running, it registers through EllesmereUI's official skinning API and shows up in its Third-Party Addons list. Without that module, the same primitives are rebuilt from the public helpers EllesmereUI exports. Either way the look is identical and you don't need to do anything.
+
+EllesmereUI's standalone addons (Standalone Raid & Party Frames and the others) work too. Each carries its own copy of EllesmereUI, and the skin uses whichever one you run. If you have the full suite, that always comes first.
 
 ## Licence
 

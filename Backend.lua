@@ -12,7 +12,9 @@
 	          and Checkbox, which stay ours because the engine's versions do
 	          not reproduce this skin's approved look. See HYBRID FACADE.
 
-	  compat  8.6.6 and earlier, or 8.6.8+ without the child addon running.
+	  compat  8.6.6 and earlier, 8.6.8+ without the child addon running, or
+	          a standalone module, which has no child addon to run (see
+	          WHICH ELLESMEREUI below).
 	          Rebuilds the same facade from the public helpers 8.6.6 does
 	          export, the accent colour, the UI font, the pixel-perfect border
 	          helper, the Dark Mode fill and the Blizzard window style
@@ -57,15 +59,82 @@
 
 local ADDON_NAME, ns = ...
 
-local EUI = EllesmereUI
-if not EUI then return end
-
 local select, ipairs, pairs, type = select, ipairs, pairs, type
 local CreateFrame, hooksecurefunc = CreateFrame, hooksecurefunc
 
 -- 12.0 secret values: reading a tainted size returns a value that errors on
 -- arithmetic. The engine guards every such read; so do we.
 local issecretvalue = issecretvalue or function() return false end
+
+
+--[[ WHICH ELLESMEREUI ---------------------------------------------------------
+	EllesmereUI ships two ways, and this skin runs on either:
+
+	  suite       the "EllesmereUI" addon. Global EllesmereUI, account
+	              settings in EllesmereUIDB, media under its own folder.
+	  standalone  one module on its own, "EllesmereUI: Standalone Raid & Party
+	              Frames" and its siblings. A single folder
+	              EUIStandalone<Module> carrying its own copy of the framework,
+	              built by renaming the word "EllesmereUI" throughout: the
+	              global becomes EUICoreStandalone<Module>, its settings
+	              EUICoreStandalone<Module>DB, and the media sits in the
+	              EUIStandalone<Module> folder. Same helpers, same media files,
+	              different names. There is no Blizz UI Enhanced child in it,
+	              so a standalone always runs on the compat backend.
+
+	A standalone switches itself off when the suite or a second standalone is
+	enabled, so at most one framework is ever live. The suite is checked
+	first, and on the suite every name below resolves to exactly the string
+	this file hard-coded before standalones were supported.
+
+	Found at PLAYER_LOGIN, not here. EllesmereUI is an optional dependency now
+	(the standalone has no "EllesmereUI" addon to depend on), and gating at
+	file scope on an optional dependency is the lesson in the header above,
+	which this addon learned the hard way. Nothing reads EUI before the boot
+	frame sets it.
+------------------------------------------------------------------------------]]
+local EUI         -- the live framework table, nil until PLAYER_LOGIN
+local hostFolder  -- the addon folder it loaded from
+local hostDBName  -- the global holding its account settings
+
+local function findHost()
+	if type(EllesmereUI) == "table" then
+		return EllesmereUI, "EllesmereUI", "EllesmereUIDB"
+	end
+	local CA = C_AddOns
+	if not (CA and CA.GetNumAddOns and CA.GetAddOnInfo and CA.IsAddOnLoaded) then return end
+	for i = 1, CA.GetNumAddOns() do
+		local folder = CA.GetAddOnInfo(i)
+		local module = type(folder) == "string" and folder:match("^EUIStandalone(.+)$")
+		if module and CA.IsAddOnLoaded(folder) then
+			-- A standalone that switched itself off still counts as loaded,
+			-- but every one of its files returns before creating the global.
+			local global = "EUICoreStandalone" .. module
+			if type(_G[global]) == "table" then
+				return _G[global], folder, global .. "DB"
+			end
+		end
+	end
+end
+
+
+-- Re-read on every call: a profile reset may swap the settings table.
+local function hostDB()
+	local t = hostDBName and _G[hostDBName]
+	return type(t) == "table" and t or nil
+end
+
+
+local function hostMedia(file)
+	return "Interface\\AddOns\\" .. (hostFolder or "EllesmereUI") .. "\\media\\" .. file
+end
+
+
+function ns.Host() return EUI end
+function ns.HostFolder() return hostFolder end
+function ns.HostIsStandalone() return hostFolder ~= nil and hostFolder ~= "EllesmereUI" end
+function ns.HostDB() return hostDB() end
+function ns.HostMedia(file) return hostMedia(file) end
 
 
 --[[ THEME ---------------------------------------------------------------------
@@ -107,7 +176,8 @@ local function resolveTheme()
 	Theme.fontShadow = (Theme.fontFlag == "")
 		and (not EUI.GetFontUseShadow or EUI.GetFontUseShadow("blizzardSkin"))
 end
-resolveTheme()
+-- First resolved by the boot frame at PLAYER_LOGIN, once EUI is known and
+-- before anything is dispatched. Nothing reads Theme before then.
 
 
 --[[ PER-FRAME STATE -----------------------------------------------------------
@@ -192,7 +262,8 @@ end
 	the "collections" window is shown, exactly as the engine does it, so a live
 	style switch only needs the alphas swapped.
 ------------------------------------------------------------------------------]]
-local SHELL_TEX = "Interface\\AddOns\\EllesmereUI\\media\\modern_blizz.png"
+-- Relative to the host's media folder; see WHICH ELLESMEREUI.
+local SHELL_TEX = "modern_blizz.png"
 local BORDER_ATLAS = "AdventureMap_TopBorder"
 local BG_ASPECT = 561 / 433
 local BASE_L, BASE_R, BASE_T, BASE_B = .25, 1, 0, .75
@@ -205,7 +276,8 @@ local WIN_KEY = "collections"
 local MODERN_FALLBACK = {r = .067, g = .067, b = .067, a = .97}
 
 local function modernBG()
-	local c = EllesmereUIDB and EllesmereUIDB.blizzWindowModernDefault
+	local edb = hostDB()
+	local c = edb and edb.blizzWindowModernDefault
 	if not (c and c.r) then c = MODERN_FALLBACK end
 	return c.r or MODERN_FALLBACK.r, c.g or MODERN_FALLBACK.g,
 		c.b or MODERN_FALLBACK.b, c.a or MODERN_FALLBACK.a
@@ -213,7 +285,7 @@ end
 
 
 local function windowStyle()
-	if EUI.GetBlizzWindowStyle then
+	if EUI and EUI.GetBlizzWindowStyle then
 		local ok, style = pcall(EUI.GetBlizzWindowStyle, WIN_KEY)
 		if ok and style then return style end
 	end
@@ -234,11 +306,11 @@ end
 	  atrocityUI / AES    #080808 @ 0.80
 ------------------------------------------------------------------------------]]
 local function hostBaseline()
-	if EUI.GetDarkModeFill then
+	if EUI and EUI.GetDarkModeFill then
 		local ok, r, g, b, a = pcall(EUI.GetDarkModeFill)
 		if ok and r then return r, g, b, a or 1 end
 	end
-	local d = EUI.DEFAULT_DARK_MODE
+	local d = EUI and EUI.DEFAULT_DARK_MODE
 	if d then
 		return d.fillR or .067, d.fillG or .067, d.fillB or .067, d.fillA or .90
 	end
@@ -402,7 +474,7 @@ local function shell(frame, opts)
 	fadeNineSlice(frame.NineSlice)
 
 	local bg = frame:CreateTexture(nil, "BACKGROUND", nil, -8)
-	bg:SetTexture(SHELL_TEX)
+	bg:SetTexture(hostMedia(SHELL_TEX))
 	bg:SetAllPoints(frame)
 	d.bg = bg
 
@@ -673,7 +745,7 @@ end
 local function showHint(owner, text, opts)
 	if type(text) == "function" then text = text() end
 	if not text then return end
-	if type(EUI.ShowWidgetTooltip) == "function" then
+	if EUI and type(EUI.ShowWidgetTooltip) == "function" then
 		EUI.ShowWidgetTooltip(owner, text, opts)
 		return
 	end
@@ -686,7 +758,7 @@ local function showHint(owner, text, opts)
 end
 
 local function hideHint(owner)
-	if type(EUI.HideWidgetTooltip) == "function" then
+	if EUI and type(EUI.HideWidgetTooltip) == "function" then
 		EUI.HideWidgetTooltip()
 	elseif GameTooltip and GameTooltip:IsOwned(owner) then
 		GameTooltip:Hide()
@@ -744,9 +816,10 @@ function Shim.Dropdown(dd)
 end
 
 
+-- Relative to the host's media folder; see WHICH ELLESMEREUI.
 local PAGE_ARROWS = {
-	["<"] = "Interface\\AddOns\\EllesmereUI\\media\\icons\\eui-arrow-left.png",
-	[">"] = "Interface\\AddOns\\EllesmereUI\\media\\icons\\eui-arrow-right.png",
+	["<"] = "icons\\eui-arrow-left.png",
+	[">"] = "icons\\eui-arrow-right.png",
 }
 
 
@@ -781,7 +854,7 @@ local function scrollArrow(btn, rotation)
 	-- is rotated a quarter turn. WoW rotates counter-clockwise for a positive
 	-- angle, so -pi/2 takes an arrow pointing left round to pointing up.
 	local tex = btn:CreateTexture(nil, "OVERLAY")
-	tex:SetTexture(PAGE_ARROWS["<"])
+	tex:SetTexture(hostMedia(PAGE_ARROWS["<"]))
 	tex:SetSize(10, 10)
 	tex:SetPoint("CENTER")
 	tex:SetRotation(rotation)
@@ -876,7 +949,7 @@ function Shim.PageButton(btn, ch, size)
 	local tex = PAGE_ARROWS[ch]
 	if tex then
 		local arrow = btn:CreateTexture(nil, "OVERLAY")
-		arrow:SetTexture(tex)
+		arrow:SetTexture(hostMedia(tex))
 		local s = size or 14
 		arrow:SetSize(s, s)
 		arrow:SetPoint("CENTER")
@@ -1115,13 +1188,13 @@ end
 	addon the first time: OptionalDeps affects load order, but a load-time guard
 	bakes in a permanent no-op if anything is off. At PLAYER_LOGIN EllesmereUI
 	is fully initialised either way, and the official dispatcher explicitly
-	supports late registration.
+	supports late registration. Which EllesmereUI, if any, is decided here too.
 ------------------------------------------------------------------------------]]
 local backend, facade, pending = nil, nil, {}
 
 function ns.GetBackend() return backend or "pending" end
 function ns.GetFacade() return facade end
-function ns.HasAPI() return EUI.RegisterSkin ~= nil end
+function ns.HasAPI() return EUI ~= nil and EUI.RegisterSkin ~= nil end
 
 -- RegisterSkin existing proves nothing: the 8.6.8 PARENT ships the stub even
 -- when the EllesmereUIBlizzardSkin child is disabled, documented as "a silent
@@ -1132,7 +1205,7 @@ function ns.HasAPI() return EUI.RegisterSkin ~= nil end
 -- compat still works in full: its helpers are parent-level, and the one that
 -- is not (GetBlizzWindowStyle) is pcall-guarded and "blizz" mode only.
 function ns.HasDispatcher()
-	return type(EUI._DispatchSkinRegistration) == "function"
+	return EUI ~= nil and type(EUI._DispatchSkinRegistration) == "function"
 end
 
 
@@ -1232,6 +1305,14 @@ local boot = CreateFrame("Frame")
 boot:RegisterEvent("PLAYER_LOGIN")
 boot:SetScript("OnEvent", function(self)
 	self:UnregisterEvent("PLAYER_LOGIN")
+	EUI, hostFolder, hostDBName = findHost()
+	if not EUI then
+		-- Neither the suite nor a standalone is running: there is nothing to
+		-- match, so nothing is dispatched and the skin body stays inert, which
+		-- /mjeuiskin reports.
+		backend = "none"
+		return
+	end
 	resolveTheme()
 	if EUI.RegisterSkin and ns.HasDispatcher() then
 		backend = "api"

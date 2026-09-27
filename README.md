@@ -7,8 +7,10 @@ Reskins [MountsJournal](https://github.com/sfmict/MountsJournal) to match
 
 </div>
 
-You need both addons installed. This one contains no part of either, and if
-you're not running both it quietly does nothing.
+You need MountsJournal, and EllesmereUI: either the full suite or any one of
+its standalone addons, such as Standalone Raid & Party Frames. This addon
+contains no part of either, and if you're not running both it quietly does
+nothing.
 
 The whole idea is that it follows *your* EllesmereUI setup rather than imposing a
 look of its own. Window colour, transparency, accent, font and border all come
@@ -67,6 +69,10 @@ atrocityUI or AES work simply because they write these same values.
 
 These get re-read every time something is painted, never cached. Switch profile,
 reopen the journal, done. There's nothing to import or keep in sync.
+
+On a standalone addon the same values come from that addon's own copy of
+EllesmereUI. It has no window border or window style settings, so there
+"Follow EllesmereUI" means no border, and the window style is the default one.
 
 ## Options
 
@@ -139,6 +145,12 @@ backdrop and opacity options keep working. On 8.6.6, or without the child
 addon, the same set of primitives is rebuilt from the public helpers
 EllesmereUI does export. You don't need to do anything either way, and
 `/mjeuiskin` will tell you which backend is running.
+
+EllesmereUI's standalone addons (Standalone Raid & Party Frames and its
+siblings) work too. Each one carries its own copy of EllesmereUI, and the skin
+uses whichever EllesmereUI is running, the full suite first. None of them
+include the Blizzard Skin module, so they always take the second route, which
+looks the same. Checked against all twelve standalone addons at 9.3.
 
 ## Licence
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+
+**New**
+
+- **Now works with EllesmereUI's standalone addons**, not just the full suite:
+  Action Bars, AuraBuff Reminders, Bags, Chat, Cooldown Manager, Damage Meters,
+  Friends List, Minimap, Nameplates, Raid & Party Frames, Resource Bars and
+  Unit Frames.
+
 ## 1.1.2
 
 **Fixed**
